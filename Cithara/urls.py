@@ -21,8 +21,8 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/songs/', include('song.urls')),
-    path('api/users/', include('user.urls')),
+    path('api/', include('song.urls')),
+    path('api/', include('user.urls')),
     path('api-auth/', include('rest_framework.urls')),
 ]
 

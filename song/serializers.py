@@ -58,9 +58,10 @@ class SongCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Song
         fields = [
-            'title', 'description', 'prompt',
+            'id', 'title', 'description', 'prompt',
             'status', 'url', 'meta_data'
         ]
+        read_only_fields = ['id']
 
     def create(self, validated_data):
         """Create song with default generating status"""

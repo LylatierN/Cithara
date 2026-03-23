@@ -1,29 +1,27 @@
+from django.contrib.auth.models import User as AuthUser
 from rest_framework import serializers
-from django.contrib.auth.models import User
-from .models import SongCreator, SongListener
+
 from song.models import Song
 from song.serializers import SongListSerializer
+from .models import User
 
 
-class UserSerializer(serializers.ModelSerializer):
-    """Serializer for Django User model"""
-
+class AuthUserSerializer(serializers.ModelSerializer):
     class Meta:
-        model = User
+        model = AuthUser
         fields = ['id', 'username', 'email',
                   'first_name', 'last_name', 'date_joined']
         read_only_fields = ['id', 'date_joined']
 
 
-class SongCreatorListSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for SongCreator lists"""
+class UserListSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     email = serializers.CharField(source='user.email', read_only=True)
     song_count = serializers.SerializerMethodField()
     can_add_songs = serializers.SerializerMethodField()
 
     class Meta:
-        model = SongCreator
+        model = User
         fields = ['user', 'username', 'email',
                   'song_count', 'can_add_songs', 'created_at']
 
@@ -34,13 +32,12 @@ class SongCreatorListSerializer(serializers.ModelSerializer):
         return obj.can_add_songs()
 
 
-class SongCreatorDetailSerializer(serializers.ModelSerializer):
-    """Detailed serializer for individual SongCreator"""
-    user = UserSerializer(read_only=True)
+class UserDetailSerializer(serializers.ModelSerializer):
+    user = AuthUserSerializer(read_only=True)
     user_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(),
+        queryset=AuthUser.objects.all(),
         source='user',
-        write_only=True
+        write_only=True,
     )
     library = SongListSerializer(many=True, read_only=True)
     library_ids = serializers.PrimaryKeyRelatedField(
@@ -48,17 +45,17 @@ class SongCreatorDetailSerializer(serializers.ModelSerializer):
         queryset=Song.objects.all(),
         source='library',
         write_only=True,
-        required=False
+        required=False,
     )
     song_count = serializers.SerializerMethodField()
     can_add_songs = serializers.SerializerMethodField()
 
     class Meta:
-        model = SongCreator
+        model = User
         fields = [
             'user', 'user_id', 'library', 'library_ids',
             'song_count', 'can_add_songs',
-            'created_at', 'updated_at'
+            'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
 
@@ -69,54 +66,58 @@ class SongCreatorDetailSerializer(serializers.ModelSerializer):
         return obj.can_add_songs()
 
     def validate_library(self, value):
-        """Validate that library doesn't exceed 20 songs"""
         if len(value) > 20:
-            raise serializers.ValidationError("Library cannot exceed 20 songs")
+            raise serializers.ValidationError('Library cannot exceed 20 songs')
         return value
 
 
-class SongCreatorCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating SongCreator"""
-
-    class Meta:
-        model = SongCreator
-        fields = ['user', 'library']
-
-    def validate_library(self, value):
-        """Validate that library doesn't exceed 20 songs"""
-        if len(value) > 20:
-            raise serializers.ValidationError("Library cannot exceed 20 songs")
-        return value
-
-
-class SongListenerListSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for SongListener lists"""
-    username = serializers.CharField(source='user.username', read_only=True)
-    email = serializers.CharField(source='user.email', read_only=True)
-
-    class Meta:
-        model = SongListener
-        fields = ['user', 'username', 'email', 'created_at']
-
-
-class SongListenerDetailSerializer(serializers.ModelSerializer):
-    """Detailed serializer for individual SongListener"""
-    user = UserSerializer(read_only=True)
-    user_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(),
-        source='user',
-        write_only=True
+class UserCreateSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(write_only=True)
+    password = serializers.CharField(
+        write_only=True, style={'input_type': 'password'})
+    email = serializers.EmailField(write_only=True, required=False, default='')
+    first_name = serializers.CharField(
+        write_only=True, required=False, default='')
+    last_name = serializers.CharField(
+        write_only=True, required=False, default='')
+    library = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Song.objects.all(), required=False
     )
 
     class Meta:
-        model = SongListener
-        fields = ['user', 'user_id', 'created_at', 'updated_at']
-        read_only_fields = ['created_at', 'updated_at']
+        model = User
+        fields = ['user', 'username', 'password', 'email',
+                  'first_name', 'last_name', 'library']
+        read_only_fields = ['user']
 
+    def validate_username(self, value):
+        if AuthUser.objects.filter(username=value).exists():
+            raise serializers.ValidationError(
+                'A user with that username already exists.')
+        return value
 
-class SongListenerCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating SongListener"""
+    def validate_library(self, value):
+        if len(value) > 20:
+            raise serializers.ValidationError(
+                'Library cannot exceed 20 songs.')
+        return value
 
-    class Meta:
-        model = SongListener
-        fields = ['user']
+    def create(self, validated_data):
+        username = validated_data.pop('username')
+        password = validated_data.pop('password')
+        email = validated_data.pop('email', '')
+        first_name = validated_data.pop('first_name', '')
+        last_name = validated_data.pop('last_name', '')
+        library = validated_data.pop('library', [])
+
+        auth_user = AuthUser.objects.create_user(
+            username=username,
+            password=password,  # create_user calls set_password internally
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+        )
+        profile = User.objects.create(user=auth_user)
+        if library:
+            profile.library.set(library)
+        return profile

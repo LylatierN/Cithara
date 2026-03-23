@@ -23,6 +23,12 @@ The application implements the following core entities:
 - **Database**: SQLite (development)
 - **Python**: 3.13+
 
+## Exercise Scope Notes
+
+- Authentication is intentionally not required for this exercise.
+- AI integration and UI design are out of scope.
+- Focus is on domain modeling, persistence, and CRUD on real data.
+
 ## Setup Instructions
 
 ### Prerequisites
@@ -96,6 +102,18 @@ The application implements the following core entities:
 - `POST /api/songs/{id}/mark_ready/` - Mark song as ready
 - `POST /api/songs/{id}/mark_failed/` - Mark song as failed
 
+### Users
+
+- `GET /api/users/` - List all users
+- `POST /api/users/` - Create a user profile
+- `GET /api/users/{id}/` - Retrieve a specific user
+- `PUT /api/users/{id}/` - Update a user
+- `PATCH /api/users/{id}/` - Partial update a user
+- `DELETE /api/users/{id}/` - Delete a user
+- `GET /api/users/{id}/library/` - Get song library
+- `POST /api/users/{id}/add_song/` - Add song to library
+- `POST /api/users/{id}/remove_song/` - Remove song from library
+
 ### Filtering & Search
 
 - Filter prompts by genre and mood: `/api/prompts/?genre=POP&mood=HAPPY`
@@ -157,6 +175,54 @@ curl -X PATCH http://127.0.0.1:8000/api/songs/1/ \
 curl -X DELETE http://127.0.0.1:8000/api/songs/1/
 ```
 
+**Create a User:**
+```bash
+curl -X POST http://127.0.0.1:8000/api/users/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "alice",
+    "password": "securepass123",
+    "email": "alice@example.com"
+  }'
+```
+
+**Add a Song to User Library:**
+```bash
+curl -X POST http://127.0.0.1:8000/api/users/1/add_song/ \
+  -H "Content-Type: application/json" \
+  -d '{"song_id": 1}'
+```
+
+**Retrieve User Library:**
+```bash
+curl http://127.0.0.1:8000/api/users/1/library/
+```
+
+**Delete a User:**
+```bash
+curl -X DELETE http://127.0.0.1:8000/api/users/1/
+```
+
+## CRUD Verification Evidence
+
+The following commands were prepared as repeatable verification steps for persistent CRUD behavior:
+
+1. Create prompt (`POST /api/prompts/`)
+2. Read prompts (`GET /api/prompts/`)
+3. Update prompt (`PATCH /api/prompts/{id}/`)
+4. Delete prompt (`DELETE /api/prompts/{id}/`)
+5. Create song linked to prompt (`POST /api/songs/`)
+6. Read songs (`GET /api/songs/`)
+7. Update song status (`PATCH /api/songs/{id}/` or `POST /api/songs/{id}/mark_ready/`)
+8. Delete song (`DELETE /api/songs/{id}/`)
+9. Create user with hashed password (`POST /api/users/`)
+10. Read users (`GET /api/users/`)
+11. Add song to user library (`POST /api/users/{id}/add_song/`)
+12. Update user (`PATCH /api/users/{id}/`)
+13. Delete user (`DELETE /api/users/{id}/`)
+
+The same operations can also be demonstrated through Django Admin at `/admin/`.
+
 ## Project Structure
 
 ```
@@ -166,7 +232,22 @@ Cithara/
 │   ├── urls.py           # Main URL configuration
 │   └── wsgi.py           # WSGI configuration
 ├── song/                  # Song app
-│   ├── models.py         # Domain models
+│   ├── models/           # One class per file domain models
+│   │   ├── __init__.py
+│   │   ├── genre.py
+│   │   ├── mood.py
+│   │   ├── prompt.py
+│   │   ├── song.py
+│   │   └── song_status.py
+│   ├── serializers.py    # DRF serializers
+│   ├── views.py          # API views
+│   ├── urls.py           # App URL configuration
+│   ├── admin.py          # Admin configuration
+│   └── migrations/       # Database migrations
+├── user/                  # User app
+│   ├── models/           # One class per file domain models
+│   │   ├── __init__.py
+│   │   └── user.py
 │   ├── serializers.py    # DRF serializers
 │   ├── views.py          # API views
 │   ├── urls.py           # App URL configuration
@@ -186,7 +267,7 @@ python manage.py test
 
 ### Making Model Changes
 
-1. Modify models in `song/models.py`
+1. Modify models in `song/models/` or `user/models/`
 2. Create migrations: `python manage.py makemigrations`
 3. Apply migrations: `python manage.py migrate`
 
