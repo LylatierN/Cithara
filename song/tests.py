@@ -65,11 +65,15 @@ class PromptSongCRUDTests(APITestCase):
 
         update_response = self.client.patch(
             f'/api/songs/{song_id}/',
-            {'status': 'READY'},
+            {'status': 'READY', 'title': 'Updated Song Title',
+                'description': 'Updated description'},
             format='json',
         )
         self.assertEqual(update_response.status_code, status.HTTP_200_OK)
         self.assertEqual(update_response.data['status'], 'READY')
+        self.assertEqual(update_response.data['title'], 'Updated Song Title')
+        self.assertEqual(
+            update_response.data['description'], 'Updated description')
 
         delete_response = self.client.delete(f'/api/songs/{song_id}/')
         self.assertEqual(delete_response.status_code,

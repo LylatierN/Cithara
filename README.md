@@ -77,7 +77,7 @@ The application implements the following core entities:
 7. **Access the application**
    - Admin Panel: http://127.0.0.1:8000/admin/
    - API Root: http://127.0.0.1:8000/api/
-   - Browsable API: http://127.0.0.1:8000/api-auth/
+   - Browsable API Login: http://127.0.0.1:8000/api-auth/login/
 
 ## API Endpoints
 
@@ -261,9 +261,213 @@ Cithara/
 ## Development
 
 ### Running Tests
+
+Activate the virtual environment first, then run:
+
 ```bash
-python manage.py test
+source .venv/bin/activate      # macOS/Linux
+# or
+.venv\Scripts\activate         # Windows
+
+python3 manage.py test
 ```
+
+**Actual output (all passing):**
+```
+Found 4 test(s).
+Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
+Operations to perform:
+  Synchronize unmigrated apps: django_filters, messages, rest_framework, staticfiles
+  Apply all migrations: admin, auth, contenttypes, sessions, song, user
+Running migrations:
+  Applying contenttypes.0001_initial... OK
+  Applying auth.0001_initial... OK
+  ...
+  Applying song.0001_initial... OK
+  Applying user.0001_initial... OK
+  Applying user.0002_merge_to_user... OK
+System check identified no issues (0 silenced).
+test_prompt_crud (song.tests.PromptSongCRUDTests.test_prompt_crud) ... ok
+test_song_crud (song.tests.PromptSongCRUDTests.test_song_crud) ... ok
+test_user_crud (user.tests.UserDomainCRUDTests.test_user_crud) ... ok
+test_user_library_actions (user.tests.UserDomainCRUDTests.test_user_library_actions) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.244s
+
+OK
+Destroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
+```
+
+Each `ok` is one passing test. Tests use an **in-memory SQLite database** — the production `db.sqlite3` is never touched during tests.
+
+---
+
+## Test Groups and Expected Results
+
+### Group 1: `song.tests.PromptSongCRUDTests`
+
+#### `test_prompt_crud`
+Tests full CRUD lifecycle for the `Prompt` entity.
+
+**Create** — `POST /api/prompts/`
+```json
+// Request body
+{
+  "title": "Birthday Prompt",
+  "description": "Generate an upbeat birthday song",
+  "occasion": "Birthday Party",
+  "genre": "POP",
+  "mood": "HAPPY",
+  "voice_type": "Female",
+  "lyrics": "Happy birthday to you"
+}
+// Response — 201 Created
+{
+  "id": 1,
+  "title": "Birthday Prompt",
+  "description": "Generate an upbeat birthday song",
+  "occasion": "Birthday Party",
+  "genre": "POP",
+  "mood": "HAPPY",
+  "voice_type": "Female",
+  "lyrics": "Happy birthday to you",
+  "created_at": "2026-03-23T16:27:47.026484Z",
+  "updated_at": "2026-03-23T16:27:47.026497Z",
+  "songs_count": 0
+}
+```
+*Database effect: 1 row inserted into `song_prompt`.*
+
+**Read** — `GET /api/prompts/` → `200 OK`
+```json
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [{ "id": 1, "title": "Birthday Prompt", ... }]
+}
+```
+
+**Update** — `PATCH /api/prompts/1/` with `{"title": "Updated Birthday Prompt"}` → `200 OK`
+```json
+{
+  "id": 1,
+  "title": "Updated Birthday Prompt",
+  ...
+  "updated_at": "2026-03-23T16:27:47.030265Z"
+}
+```
+*Database effect: `title` and `updated_at` updated in `song_prompt`.*
+
+**Delete** — `DELETE /api/prompts/1/` → `204 No Content` (empty body)
+*Database effect: row removed from `song_prompt`. All linked songs are also deleted (`CASCADE`).*
+
+---
+
+#### `test_song_crud`
+Tests full CRUD lifecycle for the `Song` entity (requires a linked `Prompt`).
+
+**Create** — `POST /api/songs/`
+```json
+// Request body
+{
+  "title": "Birthday Song",
+  "description": "Generated song",
+  "prompt": 1,
+  "status": "GENERATING",
+  "url": "https://example.com/song.mp3",
+  "meta_data": { "source": "test" }
+}
+// Response — 201 Created
+{
+  "id": 1,
+  "title": "Birthday Song",
+  "description": "Generated song",
+  "prompt": 1,
+  "status": "GENERATING",
+  "url": "https://example.com/song.mp3",
+  "meta_data": { "source": "test" }
+}
+```
+*Database effect: 1 row inserted into `song_song`.*
+
+**Update** — `PATCH /api/songs/1/` with `{"status": "READY"}` → `200 OK`
+```json
+{ "status": "READY", ... }
+```
+*Database effect: `status` field updated to `READY` in `song_song`.*
+
+**Delete** — `DELETE /api/songs/1/` → `204 No Content`
+*Database effect: row removed from `song_song`.*
+
+---
+
+### Group 2: `user.tests.UserDomainCRUDTests`
+
+#### `test_user_crud`
+Tests full CRUD lifecycle for the `User` profile entity.
+
+**Create** — `POST /api/users/`
+```json
+// Request body
+{
+  "username": "testuser1",
+  "password": "securepass123",
+  "email": "testuser1@example.com"
+}
+// Response — 201 Created
+{
+  "user": 1,
+  "library": []
+}
+```
+*Database effect: 1 row in `auth_user` (password stored as bcrypt/PBKDF2 hash, never plain text) + 1 row in `user_user`.*
+
+**Read (list)** — `GET /api/users/` → `200 OK`, `count >= 1`
+
+**Read (detail)** — `GET /api/users/1/` → `200 OK`
+
+**Update** — `PATCH /api/users/1/` with `{"library": []}` → `200 OK`
+
+**Delete** — `DELETE /api/users/1/` → `204 No Content`
+*Database effect: row removed from `user_user` and `auth_user` (CASCADE).*
+
+---
+
+#### `test_user_library_actions`
+Tests song library management on a `User` profile.
+
+**Add song** — `POST /api/users/1/add_song/` with `{"song_id": 1}` → `200 OK`
+```json
+{ "message": "Song added to library" }
+```
+*Database effect: 1 row inserted into the `user_user_library` join table.*
+
+**View library** — `GET /api/users/1/library/` → `200 OK`
+```json
+[
+  {
+    "id": 1,
+    "title": "Library Song",
+    "status": "GENERATING",
+    "prompt_title": "Prompt for user tests",
+    "created_at": "2026-03-23T16:27:47.044795Z",
+    "url": ""
+  }
+]
+```
+*Database effect: 1 entry in `user_user_library` — confirms persistence.*
+
+**Remove song** — `POST /api/users/1/remove_song/` with `{"song_id": 1}` → `200 OK`
+```json
+{ "message": "Song removed from library" }
+```
+*Database effect: row deleted from `user_user_library`.*
+
+**Verify empty** — `GET /api/users/1/library/` → `200 OK`, returns `[]`
+
+---
 
 ### Making Model Changes
 
@@ -271,19 +475,7 @@ python manage.py test
 2. Create migrations: `python manage.py makemigrations`
 3. Apply migrations: `python manage.py migrate`
 
-## Academic Project Requirements
-
-This project fulfills the following requirements:
-
-- ✅ **Task 1**: Django project setup with GitHub repository
-- ✅ **Task 2**: Domain layer implementation with proper models
-- ✅ **Task 3**: ORM and database migrations
-- ✅ **Task 4**: Complete CRUD operations via Django Admin and REST API
-
-## License
-
-This is an academic project for educational purposes.
 
 ## Contributors
 
-- Nattanan Pimjaipong
+- 6710545601 Nattanan Pimjaipong
