@@ -145,3 +145,9 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.BasicAuthentication',
     ],
 }
+
+# Song Generation Strategy: 'mock' or 'suno'
+GENERATOR_STRATEGY = os.getenv('GENERATOR_STRATEGY', 'mock')
+
+# Suno API Key (only needed when GENERATOR_STRATEGY=suno)
+SUNO_API_KEY = os.getenv('SUNO_API_KEY', '')

@@ -58,26 +58,176 @@ The application implements the following core entities:
    pip install -r requirements.txt
    ```
 
-4. **Run database migrations**
+4. **Set up environment variables**
+
+   Copy `.env.example` to `.env` and fill in your values:
+   ```bash
+   cp .env.example .env
+   ```
+
+   Edit `.env`:
+   ```
+   SECRET_KEY=your-django-secret-key
+   GENERATOR_STRATEGY=mock
+   SUNO_API_KEY=your-suno-api-key-here
+   ```
+
+   > ⚠️ Never commit `.env` to GitHub. It is listed in `.gitignore`.
+
+5. **Run database migrations**
    ```bash
    python manage.py makemigrations
    python manage.py migrate
    ```
 
-5. **Create a superuser (for admin access)**
+6. **Create a superuser (for admin access)**
    ```bash
    python manage.py createsuperuser
    ```
 
-6. **Run the development server**
+7. **Run the development server**
    ```bash
    python manage.py runserver
    ```
 
-7. **Access the application**
+8. **Access the application**
    - Admin Panel: http://127.0.0.1:8000/admin/
    - API Root: http://127.0.0.1:8000/api/
    - Browsable API Login: http://127.0.0.1:8000/api-auth/login/
+
+---
+
+## Exercise 4: Strategy Pattern for Song Generation
+
+### Overview
+
+This exercise implements the Strategy design pattern for song generation. The strategy is selected via an environment variable, making it easy to swap between mock and real generation without changing any code.
+
+Two strategies are available:
+- **Mock**: Offline, no API calls, instant result — for development/testing
+- **Suno**: Calls the real SunoApi.org to generate AI music
+
+### Strategy Pattern Structure
+
+```
+song/
+  generation/
+    __init__.py        # Empty init
+    base.py            # Strategy interface + GenerationRequest/GenerationResult dataclasses
+    mock_strategy.py   # Strategy A: Mock generator (offline, deterministic)
+    suno_strategy.py   # Strategy B: Suno API generator (real AI music)
+    factory.py         # Centralized strategy selector (reads GENERATOR_STRATEGY setting)
+```
+
+The `factory.py` is the single place in the codebase that decides which strategy to use — there are no scattered if/else checks anywhere else.
+
+### Where to Put the Suno API Key
+
+Add it to your `.env` file:
+```
+SUNO_API_KEY=your-actual-key-here
+```
+
+Get your API key from: https://sunoapi.org/api-key
+
+> ⚠️ Never commit this key to GitHub. The `.env` file is in `.gitignore`.
+
+### New API Endpoints (Exercise 4)
+
+- `POST /api/songs/{id}/generate/` — Trigger song generation using the active strategy
+- `GET /api/songs/{id}/check_status/` — Poll Suno for the latest generation status
+
+### How to Run Mock Mode
+
+1. Set `GENERATOR_STRATEGY=mock` in your `.env` file
+2. Start the server:
+   ```bash
+   python manage.py runserver
+   ```
+3. Create a prompt:
+   ```bash
+   curl -X POST http://127.0.0.1:8000/api/prompts/ \
+     -H "Content-Type: application/json" \
+     -d '{
+       "title": "My Song",
+       "description": "A fun song",
+       "occasion": "Birthday",
+       "genre": "POP",
+       "mood": "HAPPY",
+       "voice_type": "Female",
+       "lyrics": ""
+     }'
+   ```
+4. Create a song linked to that prompt (use the prompt `id` from step 3):
+   ```bash
+   curl -X POST http://127.0.0.1:8000/api/songs/ \
+     -H "Content-Type: application/json" \
+     -d '{
+       "title": "My Song",
+       "description": "A fun song",
+       "prompt": 1,
+       "status": "GENERATING",
+       "url": "",
+       "meta_data": {}
+     }'
+   ```
+5. Trigger mock generation (use the song `id` from step 4):
+   ```bash
+   curl -X POST http://127.0.0.1:8000/api/songs/1/generate/ \
+     -H "Accept: application/json"
+   ```
+6. Response returns immediately with `"status": "READY"` and a placeholder audio URL:
+   ```json
+   {
+     "status": "READY",
+     "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+     "meta_data": {
+       "mock": true,
+       "task_id": "mock-task-12345"
+     }
+   }
+   ```
+
+### How to Run Suno Mode
+
+1. Set `GENERATOR_STRATEGY=suno` in your `.env` file
+2. Make sure `SUNO_API_KEY` is set in your `.env` file
+3. Start the server:
+   ```bash
+   python manage.py runserver
+   ```
+4. Create a prompt and song (same as Mock Mode steps 3–4)
+5. Trigger Suno generation:
+   ```bash
+   curl -X POST http://127.0.0.1:8000/api/songs/1/generate/ \
+     -H "Accept: application/json"
+   ```
+6. Response returns a `taskId` from Suno:
+   ```json
+   {
+     "status": "GENERATING",
+     "meta_data": {
+       "task_id": "8bed802b4d9da98a18754ce97825a7ed"
+     }
+   }
+   ```
+7. Wait 30–40 seconds, then poll for status:
+   ```bash
+   curl http://127.0.0.1:8000/api/songs/1/check_status/ \
+     -H "Accept: application/json"
+   ```
+8. Keep polling until you see `"suno_status": "SUCCESS"`:
+   ```json
+   {
+     "task_id": "8bed802b4d9da98a18754ce97825a7ed",
+     "suno_status": "SUCCESS",
+     "audio_url": "https://..../song.mp3",
+     "song_status": "READY"
+   }
+   ```
+9. Copy the `audio_url` and open it in your browser to listen to the generated song.
+
+---
 
 ## API Endpoints
 
@@ -101,6 +251,8 @@ The application implements the following core entities:
 - `DELETE /api/songs/{id}/` - Delete a song
 - `POST /api/songs/{id}/mark_ready/` - Mark song as ready
 - `POST /api/songs/{id}/mark_failed/` - Mark song as failed
+- `POST /api/songs/{id}/generate/` - Trigger song generation using active strategy
+- `GET /api/songs/{id}/check_status/` - Poll generation status from Suno
 
 ### Users
 
@@ -229,33 +381,41 @@ The same operations can also be demonstrated through Django Admin at `/admin/`.
 Cithara/
 ├── Cithara/                # Project configuration
 │   ├── settings.py        # Django settings
-│   ├── urls.py           # Main URL configuration
-│   └── wsgi.py           # WSGI configuration
+│   ├── urls.py            # Main URL configuration
+│   └── wsgi.py            # WSGI configuration
 ├── song/                  # Song app
-│   ├── models/           # One class per file domain models
+│   ├── generation/        # Strategy pattern (Exercise 4)
+│   │   ├── __init__.py
+│   │   ├── base.py        # Strategy interface
+│   │   ├── mock_strategy.py  # Mock strategy
+│   │   ├── suno_strategy.py  # Suno API strategy
+│   │   └── factory.py    # Centralized strategy selector
+│   ├── models/            # One class per file domain models
 │   │   ├── __init__.py
 │   │   ├── genre.py
 │   │   ├── mood.py
 │   │   ├── prompt.py
 │   │   ├── song.py
 │   │   └── song_status.py
-│   ├── serializers.py    # DRF serializers
-│   ├── views.py          # API views
-│   ├── urls.py           # App URL configuration
-│   ├── admin.py          # Admin configuration
-│   └── migrations/       # Database migrations
+│   ├── serializers.py     # DRF serializers
+│   ├── views.py           # API views
+│   ├── urls.py            # App URL configuration
+│   ├── admin.py           # Admin configuration
+│   └── migrations/        # Database migrations
 ├── user/                  # User app
-│   ├── models/           # One class per file domain models
+│   ├── models/            # One class per file domain models
 │   │   ├── __init__.py
 │   │   └── user.py
-│   ├── serializers.py    # DRF serializers
-│   ├── views.py          # API views
-│   ├── urls.py           # App URL configuration
-│   ├── admin.py          # Admin configuration
-│   └── migrations/       # Database migrations
-├── manage.py             # Django management script
-├── requirements.txt      # Python dependencies
-└── README.md            # This file
+│   ├── serializers.py     # DRF serializers
+│   ├── views.py           # API views
+│   ├── urls.py            # App URL configuration
+│   ├── admin.py           # Admin configuration
+│   └── migrations/        # Database migrations
+├── .env.example           # Example environment variables (safe to commit)
+├── .gitignore             # Excludes .env and other sensitive files
+├── manage.py              # Django management script
+├── requirements.txt       # Python dependencies
+└── README.md              # This file
 ```
 
 ## Development

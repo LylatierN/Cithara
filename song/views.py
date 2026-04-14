@@ -9,6 +9,9 @@ from .serializers import (
     SongDetailSerializer,
     SongCreateSerializer
 )
+from .generation.factory import get_song_generator
+from .generation.base import GenerationRequest
+from .models import SongStatus
 
 
 class PromptViewSet(viewsets.ModelViewSet):
@@ -82,3 +85,72 @@ class SongViewSet(viewsets.ModelViewSet):
         song.save()
         serializer = self.get_serializer(song)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def generate(self, request, pk=None):
+        """Trigger song generation using the active strategy"""
+        song = self.get_object()
+        prompt = song.prompt
+
+        # Build the request object
+        gen_request = GenerationRequest(
+            prompt_id=prompt.id,
+            title=prompt.title,
+            occasion=prompt.occasion,
+            genre=prompt.genre,
+            mood=prompt.mood,
+            voice_type=prompt.voice_type,
+            lyrics=prompt.lyrics,
+        )
+
+        # Get strategy from factory (reads GENERATOR_STRATEGY setting)
+        generator = get_song_generator()
+        result = generator.generate(gen_request)
+
+        # Update the song with results
+        song.meta_data = result.raw_response or {}
+        if result.task_id:
+            song.meta_data['task_id'] = result.task_id
+        if result.audio_url:
+            song.url = result.audio_url
+        if result.status in ('SUCCESS',):
+            song.status = SongStatus.READY
+        elif result.status == 'FAILED':
+            song.status = SongStatus.FAILED
+        # else stays GENERATING
+
+        song.save()
+        serializer = self.get_serializer(song)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'])
+    def check_status(self, request, pk=None):
+        """Poll Suno for the latest generation status"""
+        song = self.get_object()
+        task_id = song.meta_data.get('task_id')
+
+        if not task_id:
+            return Response(
+                {'error': 'No task_id found. Run /generate first.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        generator = get_song_generator()
+        result = generator.get_status(task_id)
+
+        if result.audio_url:
+            song.url = result.audio_url
+        if result.status == 'SUCCESS':
+            song.status = SongStatus.READY
+        elif result.status == 'FAILED':
+            song.status = SongStatus.FAILED
+
+        song.meta_data.update(result.raw_response or {})
+        song.save()
+
+        return Response({
+            'task_id': task_id,
+            'suno_status': result.status,
+            'audio_url': result.audio_url,
+            'song_status': song.status,
+        })
