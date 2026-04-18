@@ -12,6 +12,7 @@ from .serializers import (
 from .generation.factory import get_song_generator
 from .generation.base import GenerationRequest
 from .models import SongStatus
+from .generation.content_filter import ContentFilter
 
 
 class PromptViewSet(viewsets.ModelViewSet):
@@ -91,6 +92,14 @@ class SongViewSet(viewsets.ModelViewSet):
         """Trigger song generation using the active strategy"""
         song = self.get_object()
         prompt = song.prompt
+
+        # filter
+        filter_result = ContentFilter().check_prompt(prompt)
+        if not filter_result.passed:
+            return Response(
+                {'error': filter_result.reason},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Build the request object
         gen_request = GenerationRequest(
