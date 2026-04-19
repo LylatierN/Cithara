@@ -4,8 +4,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from song.serializers import SongListSerializer
-from .models import User
-from .serializers import UserCreateSerializer, UserDetailSerializer, UserListSerializer
+
+from ..models import User
+from ..serializers import UserCreateSerializer, UserDetailSerializer, UserListSerializer
 
 
 class UserViewSet(viewsets.ModelViewSet):
