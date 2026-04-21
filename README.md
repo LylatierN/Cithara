@@ -503,6 +503,8 @@ Running migrations:
 System check identified no issues (0 silenced).
 test_prompt_crud (song.tests.PromptSongCRUDTests.test_prompt_crud) ... ok
 test_song_crud (song.tests.PromptSongCRUDTests.test_song_crud) ... ok
+test_check_status_does_not_timeout_within_10_minutes (song.tests.SongGenerationTimeoutTests.test_check_status_does_not_timeout_within_10_minutes) ... ok
+test_check_status_times_out_after_10_minutes (song.tests.SongGenerationTimeoutTests.test_check_status_times_out_after_10_minutes) ... ok
 test_download_redirects_when_audio_exists (song.tests.SongShareDownloadTests.test_download_redirects_when_audio_exists) ... ok
 test_download_returns_404_when_no_audio (song.tests.SongShareDownloadTests.test_download_returns_404_when_no_audio) ... ok
 test_share_returns_404_when_no_audio (song.tests.SongShareDownloadTests.test_share_returns_404_when_no_audio) ... ok
@@ -511,7 +513,7 @@ test_user_crud (user.tests.UserDomainCRUDTests.test_user_crud) ... ok
 test_user_library_actions (user.tests.UserDomainCRUDTests.test_user_library_actions) ... ok
 
 ----------------------------------------------------------------------
-Ran 8 tests in 0.269s
+Ran 10 tests in 0.258s
 
 OK
 Destroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
@@ -522,6 +524,7 @@ Each `ok` is one passing test. Tests use an **in-memory SQLite database** — th
 | Test Module | Test Class | Tests |
 |-------------|------------|-------|
 | `song.tests` | `PromptSongCRUDTests` | `test_prompt_crud`, `test_song_crud` |
+| `song.tests` | `SongGenerationTimeoutTests` | `test_check_status_times_out_after_10_minutes`, `test_check_status_does_not_timeout_within_10_minutes` |
 | `song.tests` | `SongShareDownloadTests` | `test_share_returns_url_when_audio_exists`, `test_share_returns_404_when_no_audio`, `test_download_redirects_when_audio_exists`, `test_download_returns_404_when_no_audio` |
 | `user.tests` | `UserDomainCRUDTests` | `test_user_crud`, `test_user_library_actions` |
 
@@ -627,7 +630,25 @@ Tests full CRUD lifecycle for the `Song` entity (requires a linked `Prompt`).
 
 ---
 
-### Group 2: `song.tests.SongShareDownloadTests`
+### Group 2: `song.tests.SongGenerationTimeoutTests`
+
+Tests NFR-06: song generation must not exceed 10 minutes. Uses a song with a `task_id` in `meta_data` and simulates time passing by setting `generation_started_at` directly in the database.
+
+#### `test_check_status_times_out_after_10_minutes` (NFR-06 timeout path)
+**GET** `/api/songs/{id}/check_status/` when `generation_started_at` is 11 minutes ago → `408 Request Timeout`
+```json
+{ "error": "...", "suno_status": "FAILED" }
+```
+- Song is marked `FAILED` in the database.
+- `meta_data` records `"timeout": true`.
+
+#### `test_check_status_does_not_timeout_within_10_minutes` (NFR-06 normal path)
+**GET** `/api/songs/{id}/check_status/` when `generation_started_at` is 5 minutes ago → `200 OK`
+- No timeout; proceeds normally with the mock strategy returning `SUCCESS`.
+
+---
+
+### Group 3: `song.tests.SongShareDownloadTests`
 
 Tests the share (FR-13) and download (FR-12) endpoints. Uses two songs: one with an audio URL (happy path) and one without (error path).
 
@@ -656,7 +677,7 @@ Tests the share (FR-13) and download (FR-12) endpoints. Uses two songs: one with
 
 ---
 
-### Group 3: `user.tests.UserDomainCRUDTests`
+### Group 4: `user.tests.UserDomainCRUDTests`
 
 #### `test_user_crud`
 Tests full CRUD lifecycle for the `User` profile entity.

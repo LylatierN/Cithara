@@ -1,8 +1,11 @@
+from datetime import datetime
 from django.http import HttpResponseRedirect
 from rest_framework import viewsets, filters, status
+from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
+
 from .models import Prompt, Song
 from .serializers import (
     PromptSerializer,
@@ -128,6 +131,8 @@ class SongViewSet(viewsets.ModelViewSet):
         song.meta_data = result.raw_response or {}
         if result.task_id:
             song.meta_data['task_id'] = result.task_id
+            song.meta_data['generation_started_at'] = timezone.now(
+            ).isoformat()
         if result.audio_url:
             song.url = result.audio_url
         if result.status in ('SUCCESS',):
@@ -152,6 +157,27 @@ class SongViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        TIMEOUT_MINUTES = 10
+        started_at_str = song.meta_data.get('generation_started_at')
+        if started_at_str:
+            # parse the ISO string back into a datetime object
+            started_at = datetime.fromisoformat(started_at_str)
+            # subtract to get a timedelta, then convert to seconds
+            elapsed_seconds = (timezone.now() - started_at).total_seconds()
+
+            if elapsed_seconds > TIMEOUT_MINUTES * 60:
+                song.status = SongStatus.FAILED
+                song.meta_data['timeout'] = True
+                song.save()
+                return Response({
+                    'task_id': task_id,
+                    'suno_status': 'FAILED',
+                    'audio_url': None,
+                    'song_status': song.status,
+                    'error': f'Generation timed out after {TIMEOUT_MINUTES} minutes.',
+                }, status=status.HTTP_408_REQUEST_TIMEOUT)
+
+        # timeout not reached — poll Suno normally
         generator = get_song_generator()
         result = generator.get_status(task_id)
 

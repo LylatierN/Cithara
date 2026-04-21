@@ -1,3 +1,6 @@
+from unittest.mock import patch
+from django.utils import timezone
+from datetime import timedelta
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -127,13 +130,8 @@ class SongShareDownloadTests(APITestCase):
         self.assertEqual(song_no_url.status_code, status.HTTP_201_CREATED)
         self.song_no_url_id = song_no_url.data['id']
 
-    # ------------------------------------------------------------------ #
-    # FR-13  share                                                         #
-    # ------------------------------------------------------------------ #
-
     def test_share_returns_url_when_audio_exists(self):
         """
-        FR-13 happy path:
         GET /api/songs/{id}/share/ on a song that has a url
         should return 200 with a 'share_url' key in the response body.
         """
@@ -154,7 +152,6 @@ class SongShareDownloadTests(APITestCase):
 
     def test_share_returns_404_when_no_audio(self):
         """
-        FR-13 error path:
         GET /api/songs/{id}/share/ on a song with no url and no audio_file
         should return 404 with an 'error' key explaining why.
         """
@@ -167,13 +164,8 @@ class SongShareDownloadTests(APITestCase):
         # The response body must contain 'error'
         self.assertIn('error', response.data)
 
-    # ------------------------------------------------------------------ #
-    # FR-12  download                                                      #
-    # ------------------------------------------------------------------ #
-
     def test_download_redirects_when_audio_exists(self):
         """
-        FR-12 happy path:
         GET /api/songs/{id}/download/ on a song that has a url
         should return 302 (redirect) pointing to the audio file.
 
@@ -197,7 +189,6 @@ class SongShareDownloadTests(APITestCase):
 
     def test_download_returns_404_when_no_audio(self):
         """
-        FR-12 error path:
         GET /api/songs/{id}/download/ on a song with no url and no audio_file
         should return 404 with an 'error' key explaining why.
         """
@@ -211,3 +202,91 @@ class SongShareDownloadTests(APITestCase):
 
         # The response body must contain 'error'
         self.assertIn('error', response.data)
+
+
+class SongGenerationTimeoutTests(APITestCase):
+    """
+    Tests for NFR-06: generation must not exceed 10 minutes.
+    If it does, check_status should mark the song as FAILED
+    and return 408 without polling Suno.
+    """
+
+    def setUp(self):
+        # Create prompt
+        prompt_response = self.client.post('/api/prompts/', {
+            'title': 'Timeout Test Prompt',
+            'description': 'Test',
+            'occasion': 'Test',
+            'genre': 'POP',
+            'mood': 'HAPPY',
+            'voice_type': 'Female',
+            'lyrics': '',
+        }, format='json')
+        self.prompt_id = prompt_response.data['id']
+
+        # Create a song that is still GENERATING
+        song_response = self.client.post('/api/songs/', {
+            'title': 'Timeout Song',
+            'description': 'Will time out',
+            'prompt': self.prompt_id,
+            'status': 'GENERATING',
+            'meta_data': {},
+        }, format='json')
+        self.song_id = song_response.data['id']
+
+    def _set_meta_data(self, started_at):
+        """
+        Directly update the song's meta_data in the DB.
+        We bypass the API here because no endpoint exposes
+        meta_data editing — this is test-only setup.
+        """
+        from song.models import Song
+        song = Song.objects.get(pk=self.song_id)
+        song.meta_data = {
+            'task_id': 'mock-task-12345',
+            'generation_started_at': started_at.isoformat(),
+        }
+        song.save()
+
+    def test_check_status_times_out_after_10_minutes(self):
+        """
+        NFR-06: If more than 10 minutes have passed since generation started,
+        check_status must return 408 and mark the song as FAILED.
+        We simulate time passing by setting generation_started_at to
+        11 minutes ago directly in the database.
+        """
+        eleven_minutes_ago = timezone.now() - timedelta(minutes=11)
+        self._set_meta_data(started_at=eleven_minutes_ago)
+
+        response = self.client.get(f'/api/songs/{self.song_id}/check_status/')
+
+        # 408 Request Timeout — generation took too long
+        self.assertEqual(response.status_code, status.HTTP_408_REQUEST_TIMEOUT)
+
+        # Response must explain what happened
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['suno_status'], 'FAILED')
+
+        # The song in the DB must now be marked FAILED
+        from song.models import Song
+        song = Song.objects.get(pk=self.song_id)
+        self.assertEqual(song.status, 'FAILED')
+
+        # meta_data must record that it was a timeout
+        self.assertTrue(song.meta_data.get('timeout'))
+
+    def test_check_status_does_not_timeout_within_10_minutes(self):
+        """
+        NFR-06: If less than 10 minutes have passed, check_status should
+        proceed normally and NOT return 408.
+        The mock strategy always returns SUCCESS so we expect 200 here.
+        """
+        five_minutes_ago = timezone.now() - timedelta(minutes=5)
+        self._set_meta_data(started_at=five_minutes_ago)
+
+        response = self.client.get(f'/api/songs/{self.song_id}/check_status/')
+
+        # Should NOT be a timeout
+        self.assertNotEqual(response.status_code,
+                            status.HTTP_408_REQUEST_TIMEOUT)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
