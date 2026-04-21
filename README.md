@@ -231,47 +231,66 @@ Get your API key from: https://sunoapi.org/api-key
 
 ## API Endpoints
 
-### Prompts
+### Authentication
 
-- `GET /api/prompts/` - List all prompts
-- `POST /api/prompts/` - Create a new prompt
-- `GET /api/prompts/{id}/` - Retrieve a specific prompt
-- `PUT /api/prompts/{id}/` - Update a prompt
-- `PATCH /api/prompts/{id}/` - Partial update a prompt
-- `DELETE /api/prompts/{id}/` - Delete a prompt
-- `GET /api/prompts/{id}/songs/` - Get all songs from a prompt
-
-### Songs
-
-- `GET /api/songs/` - List all songs
-- `POST /api/songs/` - Create a new song
-- `GET /api/songs/{id}/` - Retrieve a specific song
-- `PUT /api/songs/{id}/` - Update a song
-- `PATCH /api/songs/{id}/` - Partial update a song
-- `DELETE /api/songs/{id}/` - Delete a song
-- `POST /api/songs/{id}/mark_ready/` - Mark song as ready
-- `POST /api/songs/{id}/mark_failed/` - Mark song as failed
-- `POST /api/songs/{id}/generate/` - Trigger song generation using active strategy
-- `GET /api/songs/{id}/check_status/` - Poll generation status from Suno
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/auth/login/` | Obtain JWT access + refresh tokens |
+| `POST` | `/api/auth/logout/` | Invalidate the current session |
+| `POST` | `/api/auth/refresh/` | Refresh a JWT access token |
+| `GET` | `/api/auth/google/` | Redirect to Google OAuth consent screen |
+| `GET` | `/api/auth/google/callback/` | Handle Google OAuth callback |
+| `POST` | `/api/auth/forgot-password/` | Send a password reset email |
+| `POST` | `/api/auth/reset-password/` | Reset password using a token |
 
 ### Users
 
-- `GET /api/users/` - List all users
-- `POST /api/users/` - Create a user profile
-- `GET /api/users/{id}/` - Retrieve a specific user
-- `PUT /api/users/{id}/` - Update a user
-- `PATCH /api/users/{id}/` - Partial update a user
-- `DELETE /api/users/{id}/` - Delete a user
-- `GET /api/users/{id}/library/` - Get song library
-- `POST /api/users/{id}/add_song/` - Add song to library
-- `POST /api/users/{id}/remove_song/` - Remove song from library
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/users/` | List all users |
+| `POST` | `/api/users/` | Create a new user |
+| `GET` | `/api/users/{id}/` | Retrieve a specific user |
+| `PUT` | `/api/users/{id}/` | Full update a user |
+| `PATCH` | `/api/users/{id}/` | Partial update a user |
+| `DELETE` | `/api/users/{id}/` | Delete a user |
+| `GET` | `/api/users/{id}/library/` | Get the user's song library |
+| `POST` | `/api/users/{id}/add_song/` | Add a song to the library |
+| `POST` | `/api/users/{id}/remove_song/` | Remove a song from the library |
+
+### Prompts
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/prompts/` | List all prompts |
+| `POST` | `/api/prompts/` | Create a new prompt |
+| `GET` | `/api/prompts/{id}/` | Retrieve a specific prompt |
+| `PUT` | `/api/prompts/{id}/` | Full update a prompt |
+| `PATCH` | `/api/prompts/{id}/` | Partial update a prompt |
+| `DELETE` | `/api/prompts/{id}/` | Delete a prompt |
+| `GET` | `/api/prompts/{id}/songs/` | List all songs generated from a prompt |
+
+### Songs
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/songs/` | List all songs |
+| `POST` | `/api/songs/` | Create a new song |
+| `GET` | `/api/songs/{id}/` | Retrieve a specific song |
+| `PUT` | `/api/songs/{id}/` | Full update a song |
+| `PATCH` | `/api/songs/{id}/` | Partial update a song |
+| `DELETE` | `/api/songs/{id}/` | Delete a song |
+| `POST` | `/api/songs/{id}/mark_ready/` | Mark a song as ready |
+| `POST` | `/api/songs/{id}/mark_failed/` | Mark a song as failed |
+| `POST` | `/api/songs/{id}/generate/` | Trigger song generation (active strategy) |
+| `GET` | `/api/songs/{id}/check_status/` | Poll the generation status from Suno |
 
 ### Filtering & Search
 
 - Filter prompts by genre and mood: `/api/prompts/?genre=POP&mood=HAPPY`
-- Search prompts: `/api/prompts/?search=birthday`
-- Filter songs by status: `/api/songs/?status=READY`
-- Search songs: `/api/songs/?search=love`
+- Search prompts by title/description/occasion/lyrics: `/api/prompts/?search=birthday`
+- Filter songs by status or prompt: `/api/songs/?status=READY`
+- Search songs by title/description: `/api/songs/?search=love`
+- Search users by username/email/name: `/api/users/?search=alice`
 
 ## CRUD Operations
 
@@ -379,43 +398,54 @@ The same operations can also be demonstrated through Django Admin at `/admin/`.
 
 ```
 Cithara/
-├── Cithara/                # Project configuration
-│   ├── settings.py        # Django settings
-│   ├── urls.py            # Main URL configuration
-│   └── wsgi.py            # WSGI configuration
-├── song/                  # Song app
-│   ├── generation/        # Strategy pattern (Exercise 4)
+├── Cithara/                    # Project configuration
+│   ├── settings.py             # Django settings
+│   ├── urls.py                 # Main URL configuration
+│   ├── asgi.py                 # ASGI configuration
+│   └── wsgi.py                 # WSGI configuration
+├── song/                       # Song app
+│   ├── generation/             # Strategy pattern for song generation (Exercise 4)
 │   │   ├── __init__.py
-│   │   ├── base.py        # Strategy interface
-│   │   ├── mock_strategy.py  # Mock strategy
-│   │   ├── suno_strategy.py  # Suno API strategy
-│   │   └── factory.py    # Centralized strategy selector
-│   ├── models/            # One class per file domain models
+│   │   ├── base.py             # Strategy interface + dataclasses
+│   │   ├── content_filter.py   # Prompt content filter
+│   │   ├── mock_strategy.py    # Mock strategy (offline/testing)
+│   │   ├── suno_strategy.py    # Suno API strategy (real AI music)
+│   │   └── factory.py         # Centralized strategy selector
+│   ├── models/                 # One class per file domain models
 │   │   ├── __init__.py
 │   │   ├── genre.py
 │   │   ├── mood.py
 │   │   ├── prompt.py
 │   │   ├── song.py
 │   │   └── song_status.py
-│   ├── serializers.py     # DRF serializers
-│   ├── views.py           # API views
-│   ├── urls.py            # App URL configuration
-│   ├── admin.py           # Admin configuration
-│   └── migrations/        # Database migrations
-├── user/                  # User app
-│   ├── models/            # One class per file domain models
+│   ├── migrations/             # Database migrations
+│   ├── serializers.py          # DRF serializers
+│   ├── views.py                # API views
+│   ├── urls.py                 # App URL configuration
+│   ├── admin.py                # Admin configuration
+│   └── tests.py                # Unit tests
+├── user/                       # User app
+│   ├── models/                 # One class per file domain models
 │   │   ├── __init__.py
-│   │   └── user.py
-│   ├── serializers.py     # DRF serializers
-│   ├── views.py           # API views
-│   ├── urls.py            # App URL configuration
-│   ├── admin.py           # Admin configuration
-│   └── migrations/        # Database migrations
-├── .env.example           # Example environment variables (safe to commit)
-├── .gitignore             # Excludes .env and other sensitive files
-├── manage.py              # Django management script
-├── requirements.txt       # Python dependencies
-└── README.md              # This file
+│   │   ├── user.py
+│   │   └── password_reset.py   # Password reset token model
+│   ├── views/                  # Split view modules
+│   │   ├── __init__.py
+│   │   ├── auth_views.py       # Login / logout
+│   │   ├── google_views.py     # Google OAuth
+│   │   ├── password_views.py   # Forgot / reset password
+│   │   └── user_views.py       # User CRUD + library
+│   ├── migrations/             # Database migrations
+│   ├── serializers.py          # DRF serializers
+│   ├── urls.py                 # App URL configuration
+│   ├── admin.py                # Admin configuration
+│   └── tests.py                # Unit tests
+├── db.sqlite3                  # SQLite database (development)
+├── .env.example                # Example environment variables (safe to commit)
+├── .gitignore                  # Excludes .env and other sensitive files
+├── manage.py                   # Django management script
+├── requirements.txt            # Python dependencies
+└── README.md                   # This file
 ```
 
 ## Development
