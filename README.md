@@ -41,16 +41,19 @@ The application implements the following core entities:
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/LylatierN/Cithara.git
    cd Cithara
    ```
 
 2. **Create and activate virtual environment**
    ```bash
    python3 -m venv .venv
-   source .venv/bin/activate  # On macOS/Linux
-   # or
-   .venv\Scripts\activate  # On Windows
+   source .venv/bin/activate
+   ```
+   On Windows:
+   ```bash
+   python3 -m venv .venv
+   .venv\Scripts\activate
    ```
 
 3. **Install dependencies**
@@ -70,7 +73,19 @@ The application implements the following core entities:
    SECRET_KEY=your-django-secret-key
    GENERATOR_STRATEGY=mock
    SUNO_API_KEY=your-suno-api-key-here
+   GOOGLE_CLIENT_ID=your-google-client-id
+   GOOGLE_CLIENT_SECRET=your-google-client-secret
+   EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
    ```
+
+   | Variable | Description |
+   |----------|-------------|
+   | `SECRET_KEY` | Django secret key |
+   | `GENERATOR_STRATEGY` | `mock` (offline) or `suno` (real AI) |
+   | `SUNO_API_KEY` | API key from [sunoapi.org](https://sunoapi.org/api-key) — only needed when using `suno` |
+   | `GOOGLE_CLIENT_ID` | Google OAuth client ID — required for `/api/auth/google/` |
+   | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+   | `EMAIL_BACKEND` | Email backend — default prints to terminal |
 
    > ⚠️ Never commit `.env` to GitHub. It is listed in `.gitignore`.
 
@@ -283,6 +298,8 @@ Get your API key from: https://sunoapi.org/api-key
 | `POST` | `/api/songs/{id}/mark_failed/` | Mark a song as failed |
 | `POST` | `/api/songs/{id}/generate/` | Trigger song generation (active strategy) |
 | `GET` | `/api/songs/{id}/check_status/` | Poll the generation status from Suno |
+| `GET` | `/api/songs/{id}/share/` | Get a shareable audio URL for the song (FR-13) |
+| `GET` | `/api/songs/{id}/download/` | Redirect (302) to the audio file for download (FR-12) |
 
 ### Filtering & Search
 
@@ -454,17 +471,22 @@ Cithara/
 
 Activate the virtual environment first, then run:
 
+On macOS/Linux:
 ```bash
-source .venv/bin/activate      # macOS/Linux
-# or
-.venv\Scripts\activate         # Windows
-
+source .venv/bin/activate
+```
+On Windows:
+```bash
+.venv\Scripts\activate
+```
+then run this:
+```bash
 python3 manage.py test
 ```
 
 **Actual output (all passing):**
 ```
-Found 4 test(s).
+Found 8 test(s).
 Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
 Operations to perform:
   Synchronize unmigrated apps: django_filters, messages, rest_framework, staticfiles
@@ -474,22 +496,34 @@ Running migrations:
   Applying auth.0001_initial... OK
   ...
   Applying song.0001_initial... OK
+  Applying song.0002_alter_prompt_lyrics... OK
   Applying user.0001_initial... OK
   Applying user.0002_merge_to_user... OK
+  Applying user.0003_passwordresettoken... OK
 System check identified no issues (0 silenced).
 test_prompt_crud (song.tests.PromptSongCRUDTests.test_prompt_crud) ... ok
 test_song_crud (song.tests.PromptSongCRUDTests.test_song_crud) ... ok
+test_download_redirects_when_audio_exists (song.tests.SongShareDownloadTests.test_download_redirects_when_audio_exists) ... ok
+test_download_returns_404_when_no_audio (song.tests.SongShareDownloadTests.test_download_returns_404_when_no_audio) ... ok
+test_share_returns_404_when_no_audio (song.tests.SongShareDownloadTests.test_share_returns_404_when_no_audio) ... ok
+test_share_returns_url_when_audio_exists (song.tests.SongShareDownloadTests.test_share_returns_url_when_audio_exists) ... ok
 test_user_crud (user.tests.UserDomainCRUDTests.test_user_crud) ... ok
 test_user_library_actions (user.tests.UserDomainCRUDTests.test_user_library_actions) ... ok
 
 ----------------------------------------------------------------------
-Ran 4 tests in 0.244s
+Ran 8 tests in 0.269s
 
 OK
 Destroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
 ```
 
 Each `ok` is one passing test. Tests use an **in-memory SQLite database** — the production `db.sqlite3` is never touched during tests.
+
+| Test Module | Test Class | Tests |
+|-------------|------------|-------|
+| `song.tests` | `PromptSongCRUDTests` | `test_prompt_crud`, `test_song_crud` |
+| `song.tests` | `SongShareDownloadTests` | `test_share_returns_url_when_audio_exists`, `test_share_returns_404_when_no_audio`, `test_download_redirects_when_audio_exists`, `test_download_returns_404_when_no_audio` |
+| `user.tests` | `UserDomainCRUDTests` | `test_user_crud`, `test_user_library_actions` |
 
 ---
 
@@ -593,7 +627,36 @@ Tests full CRUD lifecycle for the `Song` entity (requires a linked `Prompt`).
 
 ---
 
-### Group 2: `user.tests.UserDomainCRUDTests`
+### Group 2: `song.tests.SongShareDownloadTests`
+
+Tests the share (FR-13) and download (FR-12) endpoints. Uses two songs: one with an audio URL (happy path) and one without (error path).
+
+#### `test_share_returns_url_when_audio_exists` (FR-13 happy path)
+**GET** `/api/songs/{id}/share/` on a song with a URL → `200 OK`
+```json
+{ "share_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" }
+```
+
+#### `test_share_returns_404_when_no_audio` (FR-13 error path)
+**GET** `/api/songs/{id}/share/` on a song with no URL → `404 Not Found`
+```json
+{ "error": "No audio available for this song yet." }
+```
+
+#### `test_download_redirects_when_audio_exists` (FR-12 happy path)
+**GET** `/api/songs/{id}/download/` on a song with a URL → `302 Found`
+- `Location` header points to the audio file URL.
+- The test uses `follow=False` to assert the redirect itself, not the destination.
+
+#### `test_download_returns_404_when_no_audio` (FR-12 error path)
+**GET** `/api/songs/{id}/download/` on a song with no URL → `404 Not Found`
+```json
+{ "error": "No audio available for this song yet." }
+```
+
+---
+
+### Group 3: `user.tests.UserDomainCRUDTests`
 
 #### `test_user_crud`
 Tests full CRUD lifecycle for the `User` profile entity.

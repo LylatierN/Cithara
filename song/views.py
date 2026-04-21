@@ -1,3 +1,4 @@
+from django.http import HttpResponseRedirect
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -68,6 +69,13 @@ class SongViewSet(viewsets.ModelViewSet):
         elif self.action == 'create':
             return SongCreateSerializer
         return SongDetailSerializer
+
+    def _get_audio_url(self, song, request):
+        """Return the audio URL for a song, or None if unavailable."""
+        return song.url or (
+            request.build_absolute_uri(song.audio_file.url)
+            if song.audio_file else None
+        )
 
     @action(detail=True, methods=['post'])
     def mark_ready(self, request, pk=None):
@@ -163,3 +171,25 @@ class SongViewSet(viewsets.ModelViewSet):
             'audio_url': result.audio_url,
             'song_status': song.status,
         })
+
+    @action(detail=True, methods=['get'])
+    def share(self, request, pk=None):
+        song = self.get_object()
+        url = self._get_audio_url(song, request)
+        if not url:
+            return Response(
+                {'error': 'No audio available for this song yet.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        return Response({'share_url': url})
+
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        song = self.get_object()
+        url = self._get_audio_url(song, request)
+        if not url:
+            return Response(
+                {'error': 'No audio available for this song yet.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        return HttpResponseRedirect(url)
