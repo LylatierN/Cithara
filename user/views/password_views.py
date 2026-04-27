@@ -6,11 +6,14 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
 
 from ..models import PasswordResetToken
 
 
 class ForgotPasswordView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request):
         email = request.data.get('email')
         if not email:
@@ -42,6 +45,8 @@ class ForgotPasswordView(APIView):
 
 
 class ResetPasswordView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request):
         token_value = request.data.get('token')
         new_password = request.data.get('new_password')

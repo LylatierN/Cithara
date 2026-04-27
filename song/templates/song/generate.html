@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Generate Song — Cithara{% endblock %}
+
+{% block nav_links %}
+  <a href="{% url 'dashboard' %}" class="text-gray-400 hover:text-white transition-colors">
+    ← Back to Library
+  </a>
+{% endblock %}
+
+{% block content %}
+<div class="flex-1 flex items-center justify-center px-4 py-16">
+
+  <div class="w-full max-w-2xl">
+
+    <!-- Heading -->
+    <div class="mb-10 text-center">
+      <h1 class="font-display text-4xl text-white mb-3">Create a Song</h1>
+      <p class="text-gray-400 text-sm">Fill in the details and let the AI do the rest</p>
+    </div>
+
+    <!-- Error banner -->
+    <div id="error-banner"
+         class="hidden mb-6 px-4 py-3 rounded-lg bg-red-900/40 border border-red-700 text-red-300 text-sm">
+    </div>
+
+    <!-- Form card -->
+    <div class="bg-surface-card border border-surface-border rounded-2xl p-8 shadow-2xl">
+      <form id="generate-form" class="space-y-6" novalidate>
+
+        <!-- Title -->
+        <div>
+          <label for="title" class="block text-sm text-gray-300 mb-1.5">
+            Song Title <span class="text-brand">*</span>
+          </label>
+          <input
+            id="title" type="text" placeholder="e.g. Happy Birthday Mom"
+            class="w-full bg-surface border border-surface-border text-white placeholder-gray-600
+                   rounded-lg px-4 py-2.5 text-sm
+                   focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand
+                   transition-colors"
+          />
+          <p id="title-error" class="hidden mt-1.5 text-xs text-red-400"></p>
+        </div>
+
+        <!-- Occasion -->
+        <div>
+          <label for="occasion" class="block text-sm text-gray-300 mb-1.5">
+            Occasion <span class="text-brand">*</span>
+          </label>
+          <input
+            id="occasion" type="text" placeholder="e.g. Birthday, Wedding, Graduation"
+            class="w-full bg-surface border border-surface-border text-white placeholder-gray-600
+                   rounded-lg px-4 py-2.5 text-sm
+                   focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand
+                   transition-colors"
+          />
+          <p id="occasion-error" class="hidden mt-1.5 text-xs text-red-400"></p>
+        </div>
+
+        <!-- Genre + Mood (side by side) -->
+        <div class="grid grid-cols-2 gap-4">
+
+          <!-- Genre -->
+          <div>
+            <label for="genre" class="block text-sm text-gray-300 mb-1.5">
+              Genre <span class="text-brand">*</span>
+            </label>
+            <select
+              id="genre"
+              class="w-full bg-surface border border-surface-border text-white
+                     rounded-lg px-4 py-2.5 text-sm
+                     focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand
+                     transition-colors appearance-none cursor-pointer"
+            >
+              <option value="" disabled selected class="text-gray-600">Select genre</option>
+              <option value="POP">Pop</option>
+              <option value="ROCK">Rock</option>
+              <option value="JAZZ">Jazz</option>
+              <option value="CLASSICAL">Classical</option>
+              <option value="RNB">R&B</option>
+            </select>
+            <p id="genre-error" class="hidden mt-1.5 text-xs text-red-400"></p>
+          </div>
+
+          <!-- Mood -->
+          <div>
+            <label for="mood" class="block text-sm text-gray-300 mb-1.5">
+              Mood <span class="text-brand">*</span>
+            </label>
+            <select
+              id="mood"
+              class="w-full bg-surface border border-surface-border text-white
+                     rounded-lg px-4 py-2.5 text-sm
+                     focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand
+                     transition-colors appearance-none cursor-pointer"
+            >
+              <option value="" disabled selected class="text-gray-600">Select mood</option>
+              <option value="HAPPY">Happy</option>
+              <option value="SAD">Sad</option>
+              <option value="ENERGETIC">Energetic</option>
+              <option value="RELAXED">Relaxed</option>
+            </select>
+            <p id="mood-error" class="hidden mt-1.5 text-xs text-red-400"></p>
+          </div>
+
+        </div>
+
+        <!-- Voice Type -->
+        <div>
+          <label for="voice_type" class="block text-sm text-gray-300 mb-1.5">
+            Voice Type <span class="text-brand">*</span>
+          </label>
+          <select
+            id="voice_type"
+            class="w-full bg-surface border border-surface-border text-white
+                   rounded-lg px-4 py-2.5 text-sm
+                   focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand
+                   transition-colors appearance-none cursor-pointer"
+          >
+            <option value="" disabled selected class="text-gray-600">Select voice type</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Neutral">Neutral</option>
+          </select>
+          <p id="voice_type-error" class="hidden mt-1.5 text-xs text-red-400"></p>
+        </div>
+
+        <!-- Lyrics -->
+        <div>
+          <label for="lyrics" class="block text-sm text-gray-300 mb-1.5">
+            Lyrics
+            <span class="text-gray-600 text-xs">(optional)</span>
+          </label>
+          <textarea
+            id="lyrics" rows="5"
+            placeholder="Write your own lyrics or leave blank to let the AI decide..."
+            class="w-full bg-surface border border-surface-border text-white placeholder-gray-600
+                   rounded-lg px-4 py-2.5 text-sm resize-none
+                   focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand
+                   transition-colors"
+          ></textarea>
+        </div>
+
+        <!-- Description (hidden from user, auto-filled by JS) -->
+        <input type="hidden" id="description" value="AI generated song" />
+
+        <!-- Submit -->
+        <button
+          id="generate-btn" type="submit"
+          class="w-full bg-brand hover:bg-brand-dark text-white font-medium
+                 rounded-lg px-4 py-3 text-sm transition-colors duration-200
+                 flex items-center justify-center gap-2
+                 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span id="generate-btn-text">Generate Song</span>
+          <svg id="generate-spinner" class="hidden animate-spin h-4 w-4 text-white"
+               xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10"
+                    stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        </button>
+
+      </form>
+    </div>
+
+    <!-- Generating state (hidden by default, shown while waiting) -->
+    <div id="generating-state" class="hidden mt-8 text-center">
+      <div class="inline-flex flex-col items-center gap-4 bg-surface-card border border-surface-border
+                  rounded-2xl px-10 py-8">
+        <svg class="animate-spin h-10 w-10 text-brand"
+             xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10"
+                  stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg>
+        <div>
+          <p class="text-white font-medium mb-1">Generating your song...</p>
+          <p class="text-gray-400 text-sm">This may take up to a minute. Hang tight!</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'song/js/generate.js' %}"></script>
+  <script>
+    initGenerate();
+  </script>
+{% endblock %}

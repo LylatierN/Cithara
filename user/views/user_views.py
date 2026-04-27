@@ -2,6 +2,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated, AllowAny
+
 
 from song.serializers import SongListSerializer
 
@@ -35,6 +37,12 @@ class UserViewSet(viewsets.ModelViewSet):
     search_fields = ['user__username', 'user__email',
                      'user__first_name', 'user__last_name']
     ordering_fields = ['created_at', 'user__username']
+
+    def get_permissions(self):
+        if self.action == 'create':
+            # Registration is public — no token needed
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
     def get_serializer_class(self):
         if self.action == 'list':

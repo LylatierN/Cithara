@@ -20,15 +20,17 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 from user.views import login_page, register_page, dashboard_page
+from song.views import generate_page
 
 urlpatterns = [
     # Admin
     path('admin/', admin.site.urls),
 
-    # Page routes (serve HTML templates)
+    # Page routes
     path('login/',     login_page,     name='login'),
     path('register/',  register_page,  name='register'),
     path('dashboard/', dashboard_page, name='dashboard'),
+    path('generate/',  generate_page,  name='generate'),
 
     # API routes
     path('api/', include('song.urls')),

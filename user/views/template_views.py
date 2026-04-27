@@ -16,4 +16,4 @@ def register_page(request):
 
 
 def dashboard_page(request):
-    return render(request, 'user/dashboard.html')
+    return render(request, 'song/dashboard.html')

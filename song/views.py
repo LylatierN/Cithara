@@ -4,6 +4,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
+from django.shortcuts import render
 
 from .models import Prompt, Song, SongShareLink, SongStatus
 from .serializers import (
@@ -204,3 +205,7 @@ class SongViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
         return HttpResponseRedirect(audio_url)
+
+
+def generate_page(request):
+    return render(request, 'song/generate.html')
