@@ -1,35 +1,28 @@
-from datetime import datetime
 from django.http import HttpResponseRedirect
 from rest_framework import viewsets, filters, status
-from django.utils import timezone
+from rest_framework.permissions import AllowAny
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Prompt, Song
+from .models import Prompt, Song, SongShareLink, SongStatus
 from .serializers import (
     PromptSerializer,
     SongListSerializer,
     SongDetailSerializer,
-    SongCreateSerializer
+    SongCreateSerializer,
 )
-from .generation.factory import get_song_generator
-from .generation.base import GenerationRequest
-from .models import SongStatus
-from .generation.content_filter import ContentFilter
+from .services import (
+    check_concurrent_limit,
+    check_library_limit,
+    check_content,
+    run_generation,
+    check_generation_timeout,
+    poll_and_maybe_retry,
+)
 
 
 class PromptViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for Prompt CRUD operations.
-
-    list: Get all prompts
-    create: Create a new prompt
-    retrieve: Get a specific prompt
-    update: Update a prompt
-    partial_update: Partially update a prompt
-    destroy: Delete a prompt
-    """
     queryset = Prompt.objects.all().order_by('-created_at')
     serializer_class = PromptSerializer
     filter_backends = [DjangoFilterBackend,
@@ -40,24 +33,12 @@ class PromptViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def songs(self, request, pk=None):
-        """Get all songs generated from this prompt"""
         prompt = self.get_object()
-        songs = prompt.songs.all()
-        serializer = SongListSerializer(songs, many=True)
+        serializer = SongListSerializer(prompt.songs.all(), many=True)
         return Response(serializer.data)
 
 
 class SongViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for Song CRUD operations.
-
-    list: Get all songs
-    create: Create a new song
-    retrieve: Get a specific song
-    update: Update a song
-    partial_update: Partially update a song
-    destroy: Delete a song
-    """
     queryset = Song.objects.all().select_related('prompt').order_by('-created_at')
     filter_backends = [DjangoFilterBackend,
                        filters.SearchFilter, filters.OrderingFilter]
@@ -66,7 +47,6 @@ class SongViewSet(viewsets.ModelViewSet):
     ordering_fields = ['created_at', 'title']
 
     def get_serializer_class(self):
-        """Return appropriate serializer class based on action"""
         if self.action == 'list':
             return SongListSerializer
         elif self.action == 'create':
@@ -74,7 +54,6 @@ class SongViewSet(viewsets.ModelViewSet):
         return SongDetailSerializer
 
     def _get_audio_url(self, song, request):
-        """Return the audio URL for a song, or None if unavailable."""
         return song.url or (
             request.build_absolute_uri(song.audio_file.url)
             if song.audio_file else None
@@ -82,140 +61,146 @@ class SongViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def mark_ready(self, request, pk=None):
-        """Mark a song as ready"""
         song = self.get_object()
         song.status = 'READY'
         song.save()
-        serializer = self.get_serializer(song)
-        return Response(serializer.data)
+        return Response(self.get_serializer(song).data)
 
     @action(detail=True, methods=['post'])
     def mark_failed(self, request, pk=None):
-        """Mark a song as failed"""
         song = self.get_object()
         song.status = 'FAILED'
         song.save()
-        serializer = self.get_serializer(song)
-        return Response(serializer.data)
+        return Response(self.get_serializer(song).data)
 
     @action(detail=True, methods=['post'])
     def generate(self, request, pk=None):
-        """Trigger song generation using the active strategy"""
         song = self.get_object()
-        prompt = song.prompt
 
-        # filter
-        filter_result = ContentFilter().check_prompt(prompt)
-        if not filter_result.passed:
-            return Response(
-                {'error': filter_result.reason},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if error := check_concurrent_limit():
+            return Response({'error': error}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
-        # Build the request object
-        gen_request = GenerationRequest(
-            prompt_id=prompt.id,
-            title=prompt.title,
-            occasion=prompt.occasion,
-            genre=prompt.genre,
-            mood=prompt.mood,
-            voice_type=prompt.voice_type,
-            lyrics=prompt.lyrics,
-        )
+        if error := check_library_limit(request.user):
+            return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Get strategy from factory (reads GENERATOR_STRATEGY setting)
-        generator = get_song_generator()
-        result = generator.generate(gen_request)
+        if error := check_content(song.prompt):
+            return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Update the song with results
-        song.meta_data = result.raw_response or {}
-        if result.task_id:
-            song.meta_data['task_id'] = result.task_id
-            song.meta_data['generation_started_at'] = timezone.now(
-            ).isoformat()
-        if result.audio_url:
-            song.url = result.audio_url
-        if result.status in ('SUCCESS',):
-            song.status = SongStatus.READY
-        elif result.status == 'FAILED':
-            song.status = SongStatus.FAILED
-        # else stays GENERATING
-
-        song.save()
+        result = run_generation(song)
         serializer = self.get_serializer(song)
+
+        if song.status == SongStatus.FAILED:
+            return Response(
+                {**serializer.data, 'error': 'Song generation failed. Please try again.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
         return Response(serializer.data)
 
     @action(detail=True, methods=['get'])
     def check_status(self, request, pk=None):
-        """Poll Suno for the latest generation status"""
         song = self.get_object()
         task_id = song.meta_data.get('task_id')
 
         if not task_id:
             return Response(
                 {'error': 'No task_id found. Run /generate first.'},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        TIMEOUT_MINUTES = 10
-        started_at_str = song.meta_data.get('generation_started_at')
-        if started_at_str:
-            # parse the ISO string back into a datetime object
-            started_at = datetime.fromisoformat(started_at_str)
-            # subtract to get a timedelta, then convert to seconds
-            elapsed_seconds = (timezone.now() - started_at).total_seconds()
+        if check_generation_timeout(song):
+            return Response({
+                'task_id': task_id,
+                'suno_status': 'FAILED',
+                'audio_url': None,
+                'song_status': song.status,
+                'error': 'Generation timed out after 10 minutes.',
+            }, status=status.HTTP_408_REQUEST_TIMEOUT)
 
-            if elapsed_seconds > TIMEOUT_MINUTES * 60:
-                song.status = SongStatus.FAILED
-                song.meta_data['timeout'] = True
-                song.save()
-                return Response({
-                    'task_id': task_id,
-                    'suno_status': 'FAILED',
-                    'audio_url': None,
-                    'song_status': song.status,
-                    'error': f'Generation timed out after {TIMEOUT_MINUTES} minutes.',
-                }, status=status.HTTP_408_REQUEST_TIMEOUT)
+        result, was_retried = poll_and_maybe_retry(song)
 
-        # timeout not reached — poll Suno normally
-        generator = get_song_generator()
-        result = generator.get_status(task_id)
-
-        if result.audio_url:
-            song.url = result.audio_url
-        if result.status == 'SUCCESS':
-            song.status = SongStatus.READY
-        elif result.status == 'FAILED':
-            song.status = SongStatus.FAILED
-
-        song.meta_data.update(result.raw_response or {})
-        song.save()
+        if song.status == SongStatus.FAILED:
+            return Response({
+                'task_id': task_id,
+                'suno_status': 'FAILED',
+                'audio_url': None,
+                'song_status': song.status,
+                'error': 'Song generation failed after retry.',
+            }, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response({
-            'task_id': task_id,
+            'task_id': song.meta_data.get('task_id'),
             'suno_status': result.status,
             'audio_url': result.audio_url,
             'song_status': song.status,
+            **(({'retried': True}) if was_retried else {}),
         })
 
     @action(detail=True, methods=['get'])
     def share(self, request, pk=None):
         song = self.get_object()
-        url = self._get_audio_url(song, request)
-        if not url:
+        audio_url = self._get_audio_url(song, request)
+        if not audio_url:
             return Response(
                 {'error': 'No audio available for this song yet.'},
-                status=status.HTTP_404_NOT_FOUND
+                status=status.HTTP_404_NOT_FOUND,
             )
-        return Response({'share_url': url})
+        share_link, _ = SongShareLink.objects.get_or_create(song=song)
+        player_url = request.build_absolute_uri(
+            f'/api/songs/play/{share_link.token}/')
+        return Response({'share_url': player_url})
 
-    @action(detail=True, methods=['get'])
-    def download(self, request, pk=None):
-        song = self.get_object()
-        url = self._get_audio_url(song, request)
-        if not url:
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path=r'play/(?P<token>[0-9a-f-]+)',
+        permission_classes=[AllowAny],
+    )
+    def play(self, request, token=None):
+        try:
+            share_link = SongShareLink.objects.select_related(
+                'song').get(token=token)
+        except SongShareLink.DoesNotExist:
+            return Response(
+                {'error': 'Share link not found or has been revoked.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if not share_link.is_valid():
+            return Response(
+                {'error': 'This share link has expired.'},
+                status=status.HTTP_410_GONE,
+            )
+        audio_url = self._get_audio_url(share_link.song, request)
+        if not audio_url:
             return Response(
                 {'error': 'No audio available for this song yet.'},
-                status=status.HTTP_404_NOT_FOUND
+                status=status.HTTP_404_NOT_FOUND,
             )
-        return HttpResponseRedirect(url)
+        return Response({'title': share_link.song.title, 'audio_url': audio_url})
+
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path=r'download/(?P<token>[0-9a-f-]+)',
+        permission_classes=[AllowAny],
+    )
+    def download(self, request, token=None):
+        try:
+            share_link = SongShareLink.objects.select_related(
+                'song').get(token=token)
+        except SongShareLink.DoesNotExist:
+            return Response(
+                {'error': 'Share link not found or has been revoked.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if not share_link.is_valid():
+            return Response(
+                {'error': 'This share link has expired.'},
+                status=status.HTTP_410_GONE,
+            )
+        audio_url = self._get_audio_url(share_link.song, request)
+        if not audio_url:
+            return Response(
+                {'error': 'No audio available for this song yet.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return HttpResponseRedirect(audio_url)
