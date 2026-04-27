@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Cithara{% endblock %}</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              DEFAULT: '#a855f7', /* purple-500 — our accent */
+              dark:    '#7e22ce', /* purple-800 */
+              light:   '#d8b4fe', /* purple-300 */
+            },
+            surface: {
+              DEFAULT: '#0f0f0f', /* near-black page bg */
+              card:    '#1a1a1a', /* slightly lighter card bg */
+              border:  '#2a2a2a', /* subtle border */
+            },
+          },
+          fontFamily: {
+            display: ['"Playfair Display"', 'serif'],
+            body:    ['"DM Sans"', 'sans-serif'],
+          },
+        },
+      },
+    }
+  </script>
+
+  <!-- Google Fonts: Playfair Display (display) + DM Sans (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+
+  {% block extra_head %}{% endblock %}
+</head>
+
+<body class="bg-surface text-white font-body min-h-screen antialiased">
+
+  <!-- ── Navbar ─────────────────────────────────────────── -->
+  <nav class="fixed top-0 inset-x-0 z-50 border-b border-surface-border bg-surface/80 backdrop-blur-md">
+    <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+
+      <!-- Logo -->
+      <a href="/" class="font-display text-xl text-brand tracking-wide">
+        Cithara
+      </a>
+
+      <!-- Nav links — block lets child templates add items if needed -->
+      <div class="flex items-center gap-4 text-sm text-gray-400">
+        {% block nav_links %}{% endblock %}
+      </div>
+
+    </div>
+  </nav>
+
+  <!-- ── Main content (push down by navbar height) ──────── -->
+  <main class="pt-14 min-h-screen flex flex-col">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- ── Shared JS block ────────────────────────────────── -->
+  {% block extra_js %}{% endblock %}
+
+</body>
+</html>

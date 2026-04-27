@@ -75,7 +75,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True)
     password = serializers.CharField(
         write_only=True, style={'input_type': 'password'})
-    email = serializers.EmailField(write_only=True, required=False, default='')
+    email = serializers.EmailField(write_only=True, required=True)
     first_name = serializers.CharField(
         write_only=True, required=False, default='')
     last_name = serializers.CharField(
@@ -83,6 +83,13 @@ class UserCreateSerializer(serializers.ModelSerializer):
     library = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Song.objects.all(), required=False
     )
+
+    def validate_email(self, value):
+        if AuthUser.objects.filter(email=value).exists():
+            raise serializers.ValidationError(
+                'An account with that email already exists.'
+            )
+        return value
 
     class Meta:
         model = User

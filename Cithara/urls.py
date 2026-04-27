@@ -19,14 +19,23 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from user.views import login_page, register_page, dashboard_page
+
 urlpatterns = [
+    # Admin
     path('admin/', admin.site.urls),
+
+    # Page routes (serve HTML templates)
+    path('login/',     login_page,     name='login'),
+    path('register/',  register_page,  name='register'),
+    path('dashboard/', dashboard_page, name='dashboard'),
+
+    # API routes
     path('api/', include('song.urls')),
     path('api/', include('user.urls')),
     path('api-auth/', include('rest_framework.urls')),
 ]
 
-# Serve media files in development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL,
                           document_root=settings.MEDIA_ROOT)
