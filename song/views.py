@@ -209,3 +209,7 @@ class SongViewSet(viewsets.ModelViewSet):
 
 def generate_page(request):
     return render(request, 'song/generate.html')
+
+
+def dashboard_page(request):
+    return render(request, 'song/dashboard.html')

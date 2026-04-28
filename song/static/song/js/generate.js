@@ -4,6 +4,10 @@ function getAccessToken() {
   return sessionStorage.getItem('access');
 }
 
+function getUserId() {
+  return sessionStorage.getItem('user_id');
+}
+
 function showError(message) {
   const banner = document.getElementById('error-banner');
   if (!banner) return;
@@ -143,6 +147,10 @@ async function runGeneration(fields) {
     showError('The AI generation service failed. Please try again.');
     setLoading(false); return;
   }
+
+  // Step 4: Add song to user's library
+  const userId = getUserId();
+  await apiPost(`/api/users/${userId}/add_song/`, { song_id: songId });
 
   window.location.href = '/dashboard/';
 }

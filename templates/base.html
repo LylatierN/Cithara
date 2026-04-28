@@ -51,10 +51,55 @@
         Cithara
       </a>
 
-      <!-- Nav links — block lets child templates add items if needed -->
-      <div class="flex items-center gap-4 text-sm text-gray-400">
-        {% block nav_links %}{% endblock %}
-      </div>
+      <!-- Nav tabs: Library / Generate -->
+  <div class="flex items-center gap-1">
+    <a href="{% url 'dashboard' %}"
+      id="nav-library"
+      class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors
+              text-gray-400 hover:text-white hover:bg-surface-card">
+      Library
+    </a>
+    <a href="{% url 'generate' %}"
+      id="nav-generate"
+      class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors
+              text-gray-400 hover:text-white hover:bg-surface-card">
+      + Generate
+    </a>
+  </div>
+
+  <!-- Right side: username + logout -->
+  <div class="flex items-center gap-3">
+    <span id="nav-username" class="text-sm text-gray-400"></span>
+  <button id="logout-btn" class="hover:text-white transition-colors text-sm"
+        onclick="(async function(){
+          const refresh = sessionStorage.getItem('refresh');
+          const access = sessionStorage.getItem('access');
+          try {
+            await fetch('/api/auth/logout/', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + access },
+              body: JSON.stringify({ refresh })
+            });
+          } finally {
+            sessionStorage.clear();
+            window.location.href = '/login/';
+          }
+        })()">
+  Logout
+</button>
+  </div>
+
+  <script>
+    // Highlight the active tab based on current URL
+    (function() {
+      const path = window.location.pathname;
+      if (path.startsWith('/dashboard')) {
+        document.getElementById('nav-library').classList.add('bg-surface-card', 'text-white');
+      } else if (path.startsWith('/generate')) {
+        document.getElementById('nav-generate').classList.add('bg-surface-card', 'text-white');
+      }
+    })();
+  </script>
 
     </div>
   </nav>
@@ -68,4 +113,25 @@
   {% block extra_js %}{% endblock %}
 
 </body>
+
+<script>
+  document.getElementById('logout-btn').addEventListener('click', async function() {
+    const refresh = sessionStorage.getItem('refresh');
+    const access = sessionStorage.getItem('access');
+    try {
+      await fetch('/api/auth/logout/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + access
+        },
+        body: JSON.stringify({ refresh })
+      });
+    } finally {
+      sessionStorage.clear();
+      window.location.href = '/login/';
+    }
+  });
+</script>
+
 </html>

@@ -1,3 +1,12 @@
+// ─── CSRF ─────────────────────────────────────────────────────────────────────
+
+function getCsrfToken() {
+  return document.cookie.split(';')
+    .map(c => c.trim())
+    .find(c => c.startsWith('csrftoken='))
+    ?.split('=')[1] ?? '';
+}
+
 // ─── Token Helpers ────────────────────────────────────────────────────────────
 
 function saveSession(data) {
@@ -160,7 +169,7 @@ function initLogin() {
     try {
       const response = await fetch('/api/auth/login/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
         body: JSON.stringify({ username, password }),
       });
 
@@ -202,7 +211,7 @@ function initRegister() {
     try {
       const response = await fetch('/api/users/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
         body: JSON.stringify({ username, email, password }),
       });
 

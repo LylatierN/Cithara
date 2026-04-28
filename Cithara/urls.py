@@ -20,7 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 from user.views import login_page, register_page, dashboard_page
-from song.views import generate_page
+from song.views import generate_page, dashboard_page
 
 urlpatterns = [
     # Admin

@@ -29,6 +29,7 @@ local_settings.py
 *.swo
 *~
 .DS_Store
+.claude
 
 # Environment variables
 .env
