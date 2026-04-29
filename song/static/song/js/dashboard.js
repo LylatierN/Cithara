@@ -97,7 +97,10 @@ function playSong(index) {
 
 function playPrev() {
   if (allSongs.length === 0) return;
-  // Walk backwards to find a READY song
+  if (audio.currentTime > 2) {
+    audio.currentTime = 0;
+    return;
+  }
   let idx = currentSongIndex - 1;
   while (idx >= 0 && allSongs[idx].status !== 'READY') idx--;
   if (idx >= 0) playSong(idx);
@@ -140,12 +143,25 @@ function initPlayerControls() {
   audio.addEventListener('ended', playNext);
 
   document.addEventListener('keydown', e => {
-    if (e.code !== 'Space') return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    if (document.getElementById('music-player').classList.contains('hidden')) return;
-    e.preventDefault();
-    if (audio.paused) audio.play().catch(console.warn); else audio.pause();
+    const playerHidden = document.getElementById('music-player').classList.contains('hidden');
+
+    if (e.code === 'Space') {
+      if (playerHidden) return;
+      e.preventDefault();
+      if (audio.paused) audio.play().catch(console.warn); else audio.pause();
+    } else if (e.key === 'MediaTrackNext') {
+      e.preventDefault();
+      playNext();
+    } else if (e.key === 'MediaTrackPrevious') {
+      e.preventDefault();
+      playPrev();
+    } else if (e.key === 'MediaPlayPause') {
+      if (playerHidden) return;
+      e.preventDefault();
+      if (audio.paused) audio.play().catch(console.warn); else audio.pause();
+    }
   });
 }
 
@@ -161,6 +177,7 @@ function renderSongs(songs) {
     const template = document.getElementById('song-card-template');
     const card     = template.content.cloneNode(true);
     const isReady  = song.status === 'READY';
+    card.querySelector('.song-card').dataset.songId = song.id;
     const style    = STATUS_STYLES[song.status] || STATUS_STYLES.FAILED;
 
     card.querySelector('.song-title').textContent = song.title;
@@ -268,6 +285,16 @@ function initDashboard() {
 
   document.getElementById('sidebar-close')?.addEventListener('click', closeSidebar);
 
+  document.getElementById('sd-edit-btn')?.addEventListener('click', () => {
+    if (!activeSidebarSong) return;
+    if (titleEditMode) saveSongTitle(); else enterEditMode();
+  });
+  document.getElementById('sd-cancel-btn')?.addEventListener('click', exitEditMode);
+  document.getElementById('sd-title-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); saveSongTitle(); }
+    if (e.key === 'Escape') exitEditMode();
+  });
+
   document.getElementById('sd-delete-btn')?.addEventListener('click', () => {
     if (!activeSidebarSong) return;
     pendingDeleteId = activeSidebarSong.id;
@@ -318,9 +345,64 @@ async function loadLibrary() {
 }
 
 
+// ─── Title Editing ────────────────────────────────────────────────────────────
+
+let titleEditMode = false;
+
+function enterEditMode() {
+  titleEditMode = true;
+  const input = document.getElementById('sd-title-input');
+  input.value = activeSidebarSong.title;
+  document.getElementById('sd-title').classList.add('hidden');
+  input.classList.remove('hidden');
+  input.focus();
+  input.select();
+  document.getElementById('sd-edit-label').textContent = 'Save';
+  document.getElementById('sd-cancel-btn').classList.remove('hidden');
+}
+
+function exitEditMode() {
+  titleEditMode = false;
+  document.getElementById('sd-title').classList.remove('hidden');
+  document.getElementById('sd-title-input').classList.add('hidden');
+  document.getElementById('sd-edit-label').textContent = 'Edit title';
+  document.getElementById('sd-cancel-btn').classList.add('hidden');
+}
+
+async function saveSongTitle() {
+  if (!activeSidebarSong) return;
+  const newTitle = document.getElementById('sd-title-input').value.trim();
+  if (!newTitle) return;
+  if (newTitle === activeSidebarSong.title) { exitEditMode(); return; }
+
+  try {
+    const res = await fetch(`/api/songs/${activeSidebarSong.id}/`, {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify({ title: newTitle }),
+    });
+    if (!res.ok) { showError('Failed to update title.'); return; }
+
+    activeSidebarSong.title = newTitle;
+    const idx = allSongs.findIndex(s => s.id === activeSidebarSong.id);
+    if (idx !== -1) allSongs[idx].title = newTitle;
+
+    document.getElementById('sd-title').textContent = newTitle;
+    document.querySelector(`.song-card[data-song-id="${activeSidebarSong.id}"] .song-title`)
+      ?.textContent && (document.querySelector(`.song-card[data-song-id="${activeSidebarSong.id}"] .song-title`).textContent = newTitle);
+
+    if (currentSongIndex !== -1 && allSongs[currentSongIndex]?.id === activeSidebarSong.id) {
+      document.getElementById('player-title').textContent = newTitle;
+    }
+    exitEditMode();
+  } catch { showError('Could not update title.'); }
+}
+
+
 // ─── Detail Sidebar ───────────────────────────────────────────────────────────
 
 function openSidebar(song) {
+  exitEditMode();
   activeSidebarSong = song;
   const sidebar = document.getElementById('detail-sidebar');
 
@@ -344,13 +426,11 @@ function openSidebar(song) {
   sidebar.classList.remove('hidden');
 
   document.querySelectorAll('.song-card').forEach(c => c.classList.remove('border-brand'));
-  document.querySelectorAll('.song-card').forEach(c => {
-    if (c.querySelector('.song-title')?.textContent === song.title)
-      c.classList.add('border-brand');
-  });
+  document.querySelector(`.song-card[data-song-id="${song.id}"]`)?.classList.add('border-brand');
 }
 
 function closeSidebar() {
+  exitEditMode();
   document.getElementById('detail-sidebar').classList.add('hidden');
   document.querySelectorAll('.song-card').forEach(c => c.classList.remove('border-brand'));
   activeSidebarSong = null;

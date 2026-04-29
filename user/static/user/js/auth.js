@@ -154,6 +154,10 @@ function parseAndShowErrors(errorData) {
 function initLogin() {
   if (isLoggedIn()) { window.location.href = '/dashboard/'; return; }
 
+  if (new URLSearchParams(window.location.search).get('error') === 'google_failed') {
+    showError('Google sign-in failed. Please try again.');
+  }
+
   document.getElementById('login-form')?.addEventListener('submit', async function (e) {
     e.preventDefault();
     clearBanners();
