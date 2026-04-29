@@ -42,6 +42,16 @@ class UserDomainCRUDTests(APITestCase):
         self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
         user_id = create_response.data['user']
 
+        # Authenticate
+        login_response = self.client.post(
+            '/api/auth/login/',
+            {'username': 'testuser1', 'password': 'securepass123'},
+            format='json',
+        )
+        self.assertEqual(login_response.status_code, status.HTTP_200_OK)
+        self.client.credentials(
+            HTTP_AUTHORIZATION='Bearer ' + login_response.data['access'])
+
         # List
         list_response = self.client.get('/api/users/')
         self.assertEqual(list_response.status_code, status.HTTP_200_OK)
@@ -74,6 +84,16 @@ class UserDomainCRUDTests(APITestCase):
         )
         self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
         user_id = create_response.data['user']
+
+        # Authenticate
+        login_response = self.client.post(
+            '/api/auth/login/',
+            {'username': 'testuser2', 'password': 'securepass123'},
+            format='json',
+        )
+        self.assertEqual(login_response.status_code, status.HTTP_200_OK)
+        self.client.credentials(
+            HTTP_AUTHORIZATION='Bearer ' + login_response.data['access'])
 
         song_id = self._create_song()
 

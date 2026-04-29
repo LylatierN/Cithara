@@ -194,6 +194,111 @@ function initLogin() {
 }
 
 
+// ─── Forgot Password ──────────────────────────────────────────────────────────
+
+function initForgotPassword() {
+  document.getElementById('forgot-form')?.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    clearBanners();
+
+    const email = document.getElementById('email').value.trim();
+    if (!email) {
+      showFieldError('email', 'Email is required.');
+      return;
+    }
+
+    setLoading('forgot-btn', 'forgot-spinner', 'forgot-btn-text', 'Sending…');
+
+    try {
+      const response = await fetch('/api/auth/forgot-password/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        body: JSON.stringify({ email }),
+      });
+
+      if (response.ok) {
+        showSuccess();
+        document.getElementById('forgot-form').classList.add('hidden');
+      } else {
+        const data = await response.json();
+        showError(data.error || 'Something went wrong. Please try again.');
+      }
+    } catch {
+      showError('Unable to connect to the server. Please check your connection.');
+    } finally {
+      clearLoading('forgot-btn', 'forgot-spinner', 'forgot-btn-text', 'Send reset link');
+    }
+  });
+}
+
+
+// ─── Reset Password ───────────────────────────────────────────────────────────
+
+function initResetPassword() {
+  const token = new URLSearchParams(window.location.search).get('token');
+  if (!token) {
+    showError('Invalid or missing reset token. Please request a new reset link.');
+    document.getElementById('reset-form')?.classList.add('hidden');
+    return;
+  }
+
+  document.getElementById('reset-form')?.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    clearBanners();
+
+    const password        = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirm-password').value;
+
+    let valid = true;
+    if (!password || password.length < 8) {
+      document.getElementById('password-error').textContent = 'Password must be at least 8 characters.';
+      document.getElementById('password-error').classList.remove('hidden');
+      document.getElementById('password').classList.add('border-red-500');
+      valid = false;
+    } else {
+      document.getElementById('password-error').classList.add('hidden');
+      document.getElementById('password').classList.remove('border-red-500');
+    }
+
+    if (password !== confirmPassword) {
+      document.getElementById('confirm-password-error').textContent = 'Passwords do not match.';
+      document.getElementById('confirm-password-error').classList.remove('hidden');
+      document.getElementById('confirm-password').classList.add('border-red-500');
+      valid = false;
+    } else {
+      document.getElementById('confirm-password-error').classList.add('hidden');
+      document.getElementById('confirm-password').classList.remove('border-red-500');
+    }
+
+    if (!valid) return;
+
+    setLoading('reset-btn', 'reset-spinner', 'reset-btn-text', 'Resetting…');
+
+    try {
+      const response = await fetch('/api/auth/reset-password/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        body: JSON.stringify({ token, new_password: password }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        showSuccess();
+        document.getElementById('reset-form').classList.add('hidden');
+        setTimeout(() => { window.location.href = '/login/'; }, 2000);
+      } else {
+        showError(data.error || 'Something went wrong. Please try again.');
+      }
+    } catch {
+      showError('Unable to connect to the server. Please check your connection.');
+    } finally {
+      clearLoading('reset-btn', 'reset-spinner', 'reset-btn-text', 'Reset password');
+    }
+  });
+}
+
+
 // ─── Register ─────────────────────────────────────────────────────────────────
 
 function initRegister() {

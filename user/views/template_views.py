@@ -11,3 +11,11 @@ def register_page(request):
 
 def dashboard_page(request):
     return render(request, 'song/dashboard.html')
+
+
+def forgot_password_page(request):
+    return render(request, 'user/forgot_password.html')
+
+
+def reset_password_page(request):
+    return render(request, 'user/reset_password.html')

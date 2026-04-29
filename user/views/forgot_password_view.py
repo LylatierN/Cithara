@@ -31,7 +31,7 @@ class ForgotPasswordView(APIView):
             expires_at=timezone.now() + timedelta(hours=1),
         )
 
-        reset_link = f'http://localhost:8000/api/auth/reset-password/?token={token.token}'
+        reset_link = f'http://localhost:8000/reset-password/?token={token.token}'
 
         send_mail(
             subject='Cithara - Password Reset',
@@ -42,29 +42,3 @@ class ForgotPasswordView(APIView):
         )
 
         return Response({'message': 'If that email exists, a reset link has been sent'})
-
-
-class ResetPasswordView(APIView):
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        token_value = request.data.get('token')
-        new_password = request.data.get('new_password')
-
-        if not token_value or not new_password:
-            return Response({'error': 'Token and new_password are required'}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            token = PasswordResetToken.objects.get(token=token_value)
-        except PasswordResetToken.DoesNotExist:
-            return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not token.is_valid():
-            return Response({'error': 'Token has expired or already been used'}, status=status.HTTP_400_BAD_REQUEST)
-
-        token.user.set_password(new_password)
-        token.user.save()
-        token.used = True
-        token.save()
-
-        return Response({'message': 'Password reset successfully'})

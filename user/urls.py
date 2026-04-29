@@ -18,7 +18,7 @@ urlpatterns = [
     path('auth/google/callback/', views.GoogleCallbackView.as_view(),
          name='google_callback'),
     path('auth/forgot-password/', views.ForgotPasswordView.as_view(),
-         name='forgot_password'),
+         name='api_forgot_password'),
     path('auth/reset-password/',  views.ResetPasswordView.as_view(),
-         name='reset_password'),
+         name='api_reset_password'),
 ]
