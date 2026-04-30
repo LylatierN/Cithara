@@ -50,7 +50,9 @@ def run_generation(song):
     generator = get_song_generator()
     result = generator.generate(build_gen_request(song.prompt))
 
+    song.status = SongStatus.GENERATING
     song.meta_data = result.raw_response or {}
+    song.meta_data.pop('retried', None)
     if result.task_id:
         song.meta_data['task_id'] = result.task_id
         song.meta_data['generation_started_at'] = timezone.now().isoformat()
@@ -117,6 +119,8 @@ def _retry_generation(song, generator):
         song.url = retry_result.audio_url
     if retry_result.status == 'SUCCESS':
         song.status = SongStatus.READY
+    else:
+        song.status = SongStatus.GENERATING
 
     song.save()
     return retry_result, True

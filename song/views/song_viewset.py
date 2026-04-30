@@ -4,16 +4,10 @@ from rest_framework.permissions import AllowAny
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-from django.shortcuts import render
 
-from .models import Prompt, Song, SongShareLink, SongStatus
-from .serializers import (
-    PromptSerializer,
-    SongListSerializer,
-    SongDetailSerializer,
-    SongCreateSerializer,
-)
-from .services import (
+from ..models import Song, SongShareLink, SongStatus
+from ..serializers import SongListSerializer, SongDetailSerializer, SongCreateSerializer
+from ..services import (
     check_concurrent_limit,
     check_library_limit,
     check_content,
@@ -21,22 +15,6 @@ from .services import (
     check_generation_timeout,
     poll_and_maybe_retry,
 )
-
-
-class PromptViewSet(viewsets.ModelViewSet):
-    queryset = Prompt.objects.all().order_by('-created_at')
-    serializer_class = PromptSerializer
-    filter_backends = [DjangoFilterBackend,
-                       filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['genre', 'mood']
-    search_fields = ['title', 'description', 'occasion', 'lyrics']
-    ordering_fields = ['created_at', 'title']
-
-    @action(detail=True, methods=['get'])
-    def songs(self, request, pk=None):
-        prompt = self.get_object()
-        serializer = SongListSerializer(prompt.songs.all(), many=True)
-        return Response(serializer.data)
 
 
 class SongViewSet(viewsets.ModelViewSet):
@@ -205,11 +183,3 @@ class SongViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
         return HttpResponseRedirect(audio_url)
-
-
-def generate_page(request):
-    return render(request, 'song/generate.html')
-
-
-def dashboard_page(request):
-    return render(request, 'song/dashboard.html')

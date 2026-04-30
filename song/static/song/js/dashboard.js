@@ -337,11 +337,43 @@ async function loadLibrary() {
     } else {
       renderSongs(songs);
       showState('songs');
+      startGeneratingPoller(songs);
     }
   } catch {
     showError('Failed to load your library. Please refresh the page.');
     showState('empty');
   }
+}
+
+
+// ─── Generating Poller ────────────────────────────────────────────────────────
+
+let pollerTimer = null;
+
+function startGeneratingPoller(songs) {
+  clearTimeout(pollerTimer);
+  const generating = songs.filter(s => s.status === 'GENERATING');
+  if (generating.length === 0) return;
+
+  pollerTimer = setTimeout(async () => {
+    let anyUpdated = false;
+    for (const song of generating) {
+      try {
+        const res  = await fetch(`/api/songs/${song.id}/check_status/`, { headers: authHeaders() });
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data.song_status && data.song_status !== 'GENERATING') {
+          anyUpdated = true;
+        }
+      } catch { /* ignore transient errors */ }
+    }
+    if (anyUpdated) {
+      await loadLibrary();
+    } else {
+      const refreshed = await fetchLibrary().catch(() => null);
+      if (refreshed) startGeneratingPoller(refreshed);
+    }
+  }, 5000);
 }
 
 

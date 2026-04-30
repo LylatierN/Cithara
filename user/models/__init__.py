@@ -1,5 +1,5 @@
 from .user import User
-from .password_reset import PasswordResetToken
+from .password_reset_token import PasswordResetToken
 
 __all__ = [
     'User',

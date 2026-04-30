@@ -15,12 +15,15 @@ class SunoSongGeneratorStrategy(SongGeneratorStrategy):
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
         # Use non-custom mode (simplest) - only prompt required
+        callback_url = getattr(settings, "SUNO_CALLBACK_URL", "http://localhost:8000/api/songs/callback/")
         payload = {
-            "customMode": False,
+            "customMode": True,
             "instrumental": False,
             "model": "V4",
-            "prompt": f"{request.mood} {request.genre} song about {request.occasion}. {request.lyrics}".strip(),
-            "callBackUrl": "https://example.com/callback",  # dummies urls
+            "title": request.title,
+            "prompt": request.lyrics.strip() or f"A {request.mood.lower()} {request.genre.lower()} song titled '{request.title}' for {request.occasion}.",
+            "style": f"{request.mood} {request.genre} {request.voice_type}",
+            "callBackUrl": callback_url,
         }
 
         try:
@@ -40,6 +43,16 @@ class SunoSongGeneratorStrategy(SongGeneratorStrategy):
                     f"Suno API error: {data.get('msg', 'unknown error')}")
 
             task_id = data["data"]["taskId"]
+
+            # Check if Suno rejected it immediately with an error status
+            if data["data"].get("status") not in [None, "PENDING", "SUCCESS"]:
+                return GenerationResult(
+                    task_id=None,
+                    audio_url=None,
+                    status="FAILED",
+                    raw_response={
+                        "error": f"Suno rejected: {data['data'].get('status')}"},
+                )
 
             return GenerationResult(
                 task_id=task_id,
@@ -77,8 +90,13 @@ class SunoSongGeneratorStrategy(SongGeneratorStrategy):
             suno_status = record.get("status", "PENDING")
             audio_url = None
 
+            # Map any unknown Suno status to FAILED
+            if suno_status not in ["SUCCESS", "PENDING", "FAILED"]:
+                suno_status = "FAILED"
+
             # Audio URL is inside data.response.sunoData[0].audioUrl
-            suno_data = record.get("response", {}).get("sunoData", [])
+            # response can be null (None) while PENDING, so use `or {}` not default=
+            suno_data = (record.get("response") or {}).get("sunoData", [])
             if suno_data and suno_status == "SUCCESS":
                 audio_url = suno_data[0].get("audioUrl")
 

@@ -1,6 +1,6 @@
 # Cithara — AI Music Generator
 
-> A Django REST Framework application that lets users generate AI-powered songs from descriptive prompts, manage a personal library, and share songs publicly via unique links.
+A Django REST Framework application that lets users generate AI-powered songs from descriptive prompts, manage a personal library, and share songs publicly via unique links.
 
 ---
 
@@ -48,7 +48,7 @@ Browser
 Template (HTML + JS)          ← user/templates/, song/templates/
    │  API calls (fetch)
    ▼
-View / ViewSet                ← song/views.py, user/views/
+View / ViewSet                ← song/views/, user/views/
    │
    ▼
 Serializer  ──«Adapter»──▶   JSON ↔ Python object translation
@@ -82,6 +82,81 @@ Model / DB                    ← song/models/, user/models/
 | `Mood` | Enum — `HAPPY`, `SAD`, `ENERGETIC`, `RELAXED` |
 | `SongStatus` | Enum — `GENERATING`, `READY`, `FAILED` |
 
+
+## Models Diagram
+
+```mermaid
+erDiagram
+  AuthUser {
+    int id PK
+    str username
+    str email
+    str first_name
+    str last_name
+    datetime date_joined
+  }
+
+  User {
+    int user_id PK
+    datetime created_at
+    datetime updated_at
+  }
+
+  PasswordResetToken {
+    int id PK
+    int user_id FK
+    UUID token
+    datetime created_at
+    datetime expires_at
+    bool used
+  }
+
+  Prompt {
+    int id PK
+    str title
+    str description
+    str occasion
+    str genre
+    str mood
+    str voice_type
+    str lyrics
+    datetime created_at
+    datetime updated_at
+  }
+
+  Song {
+    int id PK
+    int prompt_id FK
+    str title
+    str description
+    str status
+    str url
+    str audio_file
+    json meta_data
+    datetime created_at
+    datetime updated_at
+  }
+
+  SongShareLink {
+    int id PK
+    int song_id FK
+    UUID token
+    datetime created_at
+    datetime expires_at
+  }
+
+  User_Library {
+    int user_id FK
+    int song_id FK
+  }
+
+  AuthUser ||--|| User : "profile"
+  AuthUser ||--o{ PasswordResetToken : "resets"
+  Prompt ||--o{ Song : "generates"
+  Song ||--o| SongShareLink : "share link"
+  User ||--o{ User_Library : "has"
+  Song ||--o{ User_Library : "in"
+```
 ---
 
 ## Class Diagram
@@ -434,7 +509,8 @@ sequenceDiagram
         Strategy-->>Service: GenerationResult(task_id="mock-task-12345", status="SUCCESS")
     end
 
-    Service->>DB: song.meta_data[task_id] = result.task_id, song.save()
+    Note over Service: Always reset song.status = GENERATING, clear retried flag
+    Service->>DB: song.status = GENERATING, meta_data[task_id], song.save()
     DB-->>Service: saved
 
     alt result.status == SUCCESS (mock path)
@@ -496,6 +572,9 @@ sequenceDiagram
             alt retry also FAILED
                 Service->>DB: song.status = FAILED, song.save()
                 View-->>Browser: 502 Bad Gateway
+            else retry PENDING
+                Service->>DB: song.status = GENERATING, new task_id, song.save()
+                DB-->>Service: saved
             end
 
         else result.status == SUCCESS
@@ -544,7 +623,7 @@ Cithara/
 │   │   ├── prompt.py         # Prompt model
 │   │   ├── song.py           # Song model
 │   │   └── song_share_link.py
-│   ├── serializers/          # One class per file (Adapter pattern)
+│   ├── serializers/          
 │   │   ├── prompt_serializer.py
 │   │   ├── song_list_serializer.py
 │   │   ├── song_detail_serializer.py
@@ -555,7 +634,10 @@ Cithara/
 │   │   ├── suno_strategy.py  # Real Suno API strategy
 │   │   ├── factory.py        # Reads GENERATOR_STRATEGY env var
 │   │   └── content_filter.py # Profanity filter
-│   ├── views.py              # PromptViewSet, SongViewSet
+│   ├── views/                # ViewSets + template views
+│   │   ├── prompt_viewset.py # PromptViewSet
+│   │   ├── song_viewset.py   # SongViewSet
+│   │   └── template_views.py # generate_page, dashboard_page
 │   ├── services.py           # Business logic
 │   ├── urls.py
 │   └── templates/song/
@@ -563,13 +645,13 @@ Cithara/
 ├── user/                     # User domain
 │   ├── models/
 │   │   ├── user.py           # User profile model
-│   │   └── password_reset.py # PasswordResetToken model
-│   ├── serializers/          # One class per file
+│   │   └── password_reset_token.py # PasswordResetToken model
+│   ├── serializers/          
 │   │   ├── auth_user_serializer.py
 │   │   ├── user_list_serializer.py
 │   │   ├── user_detail_serializer.py
 │   │   └── user_create_serializer.py
-│   ├── views/                # One class per file
+│   ├── views/                
 │   │   ├── auth_views.py     # LoginView, LogoutView
 │   │   ├── user_views.py     # UserViewSet
 │   │   ├── google_auth_redirect_view.py
@@ -641,6 +723,7 @@ Cithara/
    | `SUNO_API_KEY` | Only for `suno` | API key from [sunoapi.org](https://sunoapi.org/api-key) |
    | `GOOGLE_CLIENT_ID` | Only for Google login | Google OAuth client ID |
    | `GOOGLE_CLIENT_SECRET` | Only for Google login | Google OAuth client secret |
+   | `SUNO_CALLBACK_URL` | No | Public URL Suno posts to when generation completes. Defaults to `http://localhost:8000/api/songs/callback/` (polling still works without a real URL) |
    | `EMAIL_BACKEND` | No | Default prints reset emails to terminal |
 
    > ⚠️ Never commit `.env` to GitHub — it is in `.gitignore`.
@@ -665,6 +748,7 @@ Cithara/
 
    | URL | Description |
    |-----|-------------|
+   | http://127.0.0.1:8000/| App entry point (auto-redirects to login or dashboard) |
    | `http://127.0.0.1:8000/login/` | Login page |
    | `http://127.0.0.1:8000/dashboard/` | Song dashboard |
    | `http://127.0.0.1:8000/api/` | Browsable API root |
@@ -765,7 +849,7 @@ All API endpoints require a JWT access token except the ones listed below.
 
 | Setting | Value |
 |---------|-------|
-| Access token lifetime | 30 minutes |
+| Access token lifetime | 60 minutes |
 | Refresh token lifetime | 7 days |
 
 Include the token in every authenticated request:
@@ -843,10 +927,10 @@ python manage.py test
 Expected output:
 
 ```
-Found 24 test(s).
-........................
+Found 26 test(s).
+..........................
 ----------------------------------------------------------------------
-Ran 24 tests in X.XXXs
+Ran 26 tests in X.XXXs
 
 OK
 ```
@@ -880,5 +964,5 @@ Test coverage:
 | Public access | Play and download endpoints require only the UUID token, no login |
 
 ---
-## Contrubuter
+## Contributor
 6710545601 Nattanan Pimjaipong
