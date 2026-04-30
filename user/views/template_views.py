@@ -19,3 +19,7 @@ def forgot_password_page(request):
 
 def reset_password_page(request):
     return render(request, 'user/reset_password.html')
+
+
+def root_redirect_page(request):
+    return render(request, 'user/root_redirect.html')

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cithara</title>
+  <style>
+    body { margin: 0; background: #0f0f0f; display: flex; align-items: center;
+           justify-content: center; height: 100vh; font-family: sans-serif; }
+    p { color: #9ca3af; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <p>Loading…</p>
+  <script>
+    const token = sessionStorage.getItem('access');
+    if (token) {
+      window.location.replace('/dashboard/');
+    } else {
+      window.location.replace('/login/');
+    }
+  </script>
+</body>
+</html>

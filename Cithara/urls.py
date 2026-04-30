@@ -19,7 +19,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
-from user.views import login_page, register_page, dashboard_page as user_dashboard_page, forgot_password_page, reset_password_page
+from user.views import login_page, register_page, dashboard_page as user_dashboard_page, forgot_password_page, reset_password_page, root_redirect_page
 from song.views import generate_page, dashboard_page
 
 urlpatterns = [
@@ -27,6 +27,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
 
     # Page routes
+    path('',                  root_redirect_page,    name='root'),
     path('login/',            login_page,            name='login'),
     path('register/',         register_page,         name='register'),
     path('dashboard/',        dashboard_page,        name='dashboard'),
