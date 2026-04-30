@@ -1,0 +1,358 @@
+@startuml Cithara_Class_Diagram
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 12
+skinparam classHeaderBackgroundColor #E8E8F0
+skinparam classBorderColor #7F77DD
+skinparam arrowColor #444444
+skinparam packageBackgroundColor #FAFAFA
+skinparam packageBorderColor #CCCCCC
+skinparam stereotypeCBackgroundColor #D0E8FF
+skinparam stereotypeABackgroundColor #FFE0B2
+skinparam shadowing false
+
+' ─────────────────────────────────────────
+' ENUMS
+' ─────────────────────────────────────────
+package "Enumerations" #EEF0FF {
+
+    enum Genre {
+        POP
+        ROCK
+        JAZZ
+        CLASSICAL
+        RNB
+    }
+
+    enum Mood {
+        HAPPY
+        SAD
+        ENERGETIC
+        RELAXED
+    }
+
+    enum SongStatus {
+        GENERATING
+        READY
+        FAILED
+    }
+}
+
+' ─────────────────────────────────────────
+' MODELS
+' ─────────────────────────────────────────
+package "Models" #F0FFF0 {
+
+    class Prompt {
+        +id : int
+        +title : str
+        +description : str
+        +occasion : str
+        +genre : Genre
+        +mood : Mood
+        +voice_type : str
+        +lyrics : str
+        +created_at : datetime
+        +updated_at : datetime
+        --
+        +__str__() : str
+    }
+
+    class Song {
+        +id : int
+        +title : str
+        +description : str
+        +meta_data : dict
+        +audio_file : FileField
+        +url : str
+        +status : SongStatus
+        +created_at : datetime
+        +updated_at : datetime
+        --
+        +__str__() : str
+    }
+
+    class SongShareLink {
+        +id : int
+        +token : UUID
+        +created_at : datetime
+        +expires_at : datetime
+        --
+        +is_valid() : bool
+        +__str__() : str
+    }
+
+    class User {
+        +created_at : datetime
+        +updated_at : datetime
+        --
+        +song_count() : int
+        +can_add_songs() : bool
+        +__str__() : str
+    }
+
+    class PasswordResetToken {
+        +id : int
+        +token : UUID
+        +created_at : datetime
+        +expires_at : datetime
+        +used : bool
+        --
+        +is_valid() : bool
+    }
+
+    class AuthUser <<Django built-in>> {
+        +username : str
+        +email : str
+        +first_name : str
+        +last_name : str
+        +date_joined : datetime
+    }
+}
+
+' ─────────────────────────────────────────
+' VIEWS
+' ─────────────────────────────────────────
+package "Views" #FFF8E8 {
+
+    class PromptViewSet <<ViewSet>> {
+        --
+        +list()
+        +create()
+        +retrieve()
+        +update()
+        +destroy()
+        +songs(pk)
+    }
+
+    class SongViewSet <<ViewSet>> {
+        --
+        +list()
+        +create()
+        +retrieve()
+        +update()
+        +destroy()
+        +generate(pk)
+        +check_status(pk)
+        +mark_ready(pk)
+        +mark_failed(pk)
+        +share(pk)
+        +play(token)
+        +download(token)
+        -_get_audio_url(song, request)
+    }
+
+    class LoginView <<APIView>> {
+        --
+        +post(request)
+    }
+
+    class LogoutView <<APIView>> {
+        --
+        +post(request)
+    }
+
+    class GoogleAuthRedirectView <<APIView>> {
+        --
+        +get(request)
+    }
+
+    class GoogleCallbackView <<APIView>> {
+        --
+        +get(request)
+    }
+
+    class ForgotPasswordView <<APIView>> {
+        --
+        +post(request)
+    }
+
+    class ResetPasswordView <<APIView>> {
+        --
+        +post(request)
+    }
+
+    class UserViewSet <<ViewSet>> {
+        --
+        +list()
+        +create()
+        +retrieve()
+        +update()
+        +destroy()
+        +library(pk)
+        +add_song(pk)
+        +remove_song(pk)
+    }
+}
+
+' ─────────────────────────────────────────
+' SERIALIZERS
+' ─────────────────────────────────────────
+package "Serializers  <<Adapter>>" #FFF0F5 {
+
+    class PromptSerializer <<Serializer>> {
+        +songs_count : int
+        --
+        +get_songs_count() : int
+    }
+
+    class SongListSerializer <<Serializer>> {
+        +prompt_title : str
+    }
+
+    class SongDetailSerializer <<Serializer>> {
+        +prompt : PromptSerializer
+        +prompt_id : int
+    }
+
+    class SongCreateSerializer <<Serializer>> {
+        +meta_data : dict
+        --
+        +create(validated_data)
+    }
+
+    class AuthUserSerializer <<Serializer>> {
+    }
+
+    class UserListSerializer <<Serializer>> {
+        +username : str
+        +email : str
+        +song_count : int
+        +can_add_songs : bool
+        --
+        +get_song_count() : int
+        +get_can_add_songs() : bool
+    }
+
+    class UserDetailSerializer <<Serializer>> {
+        +user : AuthUserSerializer
+        +library : SongListSerializer
+        --
+        +get_song_count() : int
+        +get_can_add_songs() : bool
+        +validate_library(value)
+    }
+
+    class UserCreateSerializer <<Serializer>> {
+        --
+        +create(validated_data)
+    }
+}
+
+' ─────────────────────────────────────────
+' SERVICE
+' ─────────────────────────────────────────
+package "Service" #FFFACD {
+
+    class SongService <<service>> {
+        +MAX_CONCURRENT_GENERATING : int = 3
+        --
+        +check_concurrent_limit() : str
+        +check_library_limit(user) : str
+        +check_content(prompt) : str
+        +run_generation(song) : GenerationResult
+        +check_generation_timeout(song) : bool
+        +poll_and_maybe_retry(song) : tuple
+        -_retry_generation(song, generator) : tuple
+        +build_gen_request(prompt) : GenerationRequest
+    }
+
+    class ContentFilter {
+        --
+        +check_prompt(prompt) : FilterResult
+    }
+}
+
+' ─────────────────────────────────────────
+' STRATEGY PATTERN
+' ─────────────────────────────────────────
+package "Strategy Pattern" #F0FFF8 {
+
+    abstract class SongGeneratorStrategy {
+        --
+        +{abstract} generate(request : GenerationRequest) : GenerationResult
+        +{abstract} get_status(task_id : str) : GenerationResult
+    }
+
+    class MockSongGeneratorStrategy {
+        --
+        +generate(request) : GenerationResult
+        +get_status(task_id) : GenerationResult
+    }
+
+    class SunoSongGeneratorStrategy {
+        --
+        +generate(request) : GenerationResult
+        +get_status(task_id) : GenerationResult
+    }
+
+    class get_song_generator <<factory>> {
+        --
+        +get_song_generator() : SongGeneratorStrategy
+    }
+
+    class GenerationRequest <<dataclass>> {
+        +prompt_id : int
+        +title : str
+        +occasion : str
+        +genre : str
+        +mood : str
+        +voice_type : str
+        +lyrics : str
+    }
+
+    class GenerationResult <<dataclass>> {
+        +task_id : str
+        +audio_url : str
+        +status : str
+        +raw_response : dict
+    }
+}
+
+' ─────────────────────────────────────────
+' RELATIONSHIPS
+' ─────────────────────────────────────────
+
+' Model associations
+Prompt "1" --> "0..*" Song : prompt FK
+Song "1" --> "1" SongShareLink : OneToOne
+User "0..*" --> "0..20" Song : library M2M
+User "1" --> "1" AuthUser : OneToOne
+PasswordResetToken "0..*" --> "1" AuthUser : user FK
+
+' Enum usage
+Prompt ..> Genre : uses
+Prompt ..> Mood : uses
+Song ..> SongStatus : uses
+
+' Views use serializers
+PromptViewSet ..> PromptSerializer : uses
+SongViewSet ..> SongListSerializer : uses
+SongViewSet ..> SongDetailSerializer : uses
+SongViewSet ..> SongCreateSerializer : uses
+UserViewSet ..> UserListSerializer : uses
+UserViewSet ..> UserDetailSerializer : uses
+UserViewSet ..> UserCreateSerializer : uses
+
+' Views use service
+SongViewSet ..> SongService : uses
+
+' Serializer nesting
+SongDetailSerializer ..> PromptSerializer : nests
+UserDetailSerializer ..> AuthUserSerializer : nests
+UserDetailSerializer ..> SongListSerializer : nests
+
+' Service dependencies
+SongService ..> get_song_generator : calls
+SongService ..> ContentFilter : calls
+SongService ..> GenerationRequest : creates
+SongService ..> GenerationResult : reads
+
+' Strategy inheritance
+MockSongGeneratorStrategy --|> SongGeneratorStrategy
+SunoSongGeneratorStrategy --|> SongGeneratorStrategy
+
+' Factory returns strategy
+get_song_generator ..> SongGeneratorStrategy : returns
+
+@enduml
